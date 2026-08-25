@@ -47,6 +47,7 @@ final class CameraCandidateStats
     boolean isEligible() { return samples >= 1; }
     boolean isRejected() { return samples == 0 && rejections >= 2; }
     void reject() { rejections++; }
+    void rejectAsUnreachable() { rejections = Math.max(rejections, 2); }
 
     boolean isBetterThan(CameraCandidateStats other)
     {

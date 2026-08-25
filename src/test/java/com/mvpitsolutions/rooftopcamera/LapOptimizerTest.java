@@ -84,6 +84,17 @@ public class LapOptimizerTest
     }
 
     @Test
+    public void unreachableCameraTargetAbandonsOnlyCurrentLap()
+    {
+        LapOptimizer optimizer = new LapOptimizer();
+        optimizer.reset(2);
+        optimizer.obstacleClicked(0, 0, 0, 100, 200, 500, marker(0, 0));
+        optimizer.cameraTargetRejected();
+        assertFalse(optimizer.isActive());
+        assertEquals(0, optimizer.getCompletedLaps());
+    }
+
+    @Test
     public void fallingOrSkippingDoesNotCompleteACalibrationLap()
     {
         LapOptimizer optimizer = new LapOptimizer();

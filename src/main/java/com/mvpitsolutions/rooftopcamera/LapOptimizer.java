@@ -90,6 +90,15 @@ final class LapOptimizer
 
     void pauseMouseSampling() { hasMouseSample = false; }
     void cameraAdjusted() { if (active) pauseMouseSampling(); }
+    void cameraTargetRejected()
+    {
+        if (active)
+        {
+            cameraAlignedAtCheckpoints = false;
+            active = false;
+            hasMouseSample = false;
+        }
+    }
 
     CompletedLap obstacleClicked(int index, int mouseX, int mouseY, int yaw, int pitch, int zoom,
         Rectangle clickbox)

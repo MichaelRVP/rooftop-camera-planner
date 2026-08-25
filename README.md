@@ -17,6 +17,8 @@ layout for all nine OSRS rooftop Agility courses.
   lap at the winner.
 - Learns the active client's reachable pitch and zoom limits when repeated
   adjustment input produces no movement, then replans without user setup.
+- Rejects yaw targets that repeated camera drags cannot reach, accounting for
+  course-forced camera behavior and standard versus expanded camera limits.
 - Draws the best learned clickboxes as static ghost markers only while the
   camera matches their learned view, so stale markers cannot misdirect clicks.
 - Excludes incidental actions such as collecting Marks of Grace from route

@@ -182,10 +182,25 @@ public class RooftopCameraPlugin extends Plugin
         {
             reachabilityTracker.cameraDrag(client.getCameraYawTarget());
         }
-        if (course != null && reachabilityTracker.observe(getSearchTarget(),
-            client.getCameraPitchTarget(), currentCameraZoom(), cameraBounds))
+        CameraTarget observedTarget = course == null ? null : getSearchTarget();
+        boolean boundsChanged = course != null && reachabilityTracker.observe(observedTarget,
+            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom(), cameraBounds);
+        boolean targetUnreachable = course != null && reachabilityTracker.consumeTargetUnreachable();
+        if (boundsChanged)
         {
             persistCameraBounds();
+            if (!lapOptimizer.isActive())
+            {
+                activeSearchTarget = null;
+            }
+        }
+        if (targetUnreachable && observedTarget != null)
+        {
+            searchHistory.getOrCreate(observedTarget.yaw, observedTarget.pitch, observedTarget.zoom)
+                .rejectAsUnreachable();
+            configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
+                searchHistory.serialize());
+            lapOptimizer.cameraTargetRejected();
             if (!lapOptimizer.isActive())
             {
                 activeSearchTarget = null;

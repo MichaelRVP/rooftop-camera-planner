@@ -92,6 +92,24 @@ public class CameraReachabilityTrackerTest
     }
 
     @Test
+    public void repeatedYawDragWithoutMovementRejectsTarget()
+    {
+        CameraBounds bounds = new CameraBounds();
+        CameraReachabilityTracker tracker = new CameraReachabilityTracker();
+        CameraTarget target = new CameraTarget(500, 1288, 512);
+        tracker.observe(target, 0, 1288, 512, bounds);
+        for (int i = 0; i < 11; i++)
+        {
+            tracker.cameraDrag(0);
+            tracker.observe(target, 0, 1288, 512, bounds);
+            assertFalse(tracker.consumeTargetUnreachable());
+        }
+        tracker.cameraDrag(0);
+        tracker.observe(target, 0, 1288, 512, bounds);
+        assertTrue(tracker.consumeTargetUnreachable());
+    }
+
+    @Test
     public void cameraBoundsRoundTripAndRejectMalformedStorage()
     {
         CameraBounds bounds = new CameraBounds();
