@@ -11,7 +11,7 @@ public interface RooftopCameraConfig extends Config
 {
     String GROUP = "rooftopCameraPlanner";
 
-    @ConfigItem(keyName = "autoLearn", name = "Learn better layouts", description = "Save a camera profile whenever the visible clickbox layout improves")
+    @ConfigItem(keyName = "autoLearn", name = "Learn better layouts", description = "Learn obstacle screen markers from complete laps and retain the camera with the most overlap and least travel")
     default boolean autoLearn() { return true; }
 
     @ConfigItem(keyName = "showAll", name = "Show all obstacles", description = "Highlight every visible rooftop obstacle instead of only the next one")

@@ -36,16 +36,42 @@ final class RooftopCameraOverlay extends OverlayPanel
         int next = plugin.getNextObstacleNumber();
         panelComponent.getChildren().add(LineComponent.builder().left("Next target").right(
             next < 0 ? "Acquiring" : "Obstacle " + next).build());
-        panelComponent.getChildren().add(LineComponent.builder().left("Layout score").right(
+        panelComponent.getChildren().add(LineComponent.builder().left("Live visibility").right(
             String.format("%.0f", plugin.getCurrentScore())).build());
         panelComponent.getChildren().add(LineComponent.builder().left("Camera guidance").build());
         panelComponent.getChildren().add(LineComponent.builder().left(plugin.cameraGuidance())
             .leftColor(new Color(74, 220, 200)).build());
-        CameraProfile profile = plugin.getBestProfile();
+        LapOptimizer optimizer = plugin.getLapOptimizer();
+        panelComponent.getChildren().add(LineComponent.builder().left("Lap progress").right(
+            optimizer.getProgress() + " / " + course.obstacles.length).build());
+        panelComponent.getChildren().add(LineComponent.builder().left("Mouse travel").right(
+            String.format("%.0f px", optimizer.getCurrentTravel())).build());
+        if (!Double.isNaN(optimizer.getLastTravel()))
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Last lap").right(
+                String.format("%.0f px%s", optimizer.getLastTravel(),
+                    optimizer.wasLastLapStable() ? "" : " (camera moved)")).build());
+            if (!Double.isNaN(optimizer.getLastMarkerTravel()))
+            {
+                panelComponent.getChildren().add(LineComponent.builder().left("Marker overlap").right(
+                    optimizer.getLastOverlappingTransitions() + " / " + course.obstacles.length).build());
+                panelComponent.getChildren().add(LineComponent.builder().left("Marker gaps").right(
+                    String.format("%.0f px", optimizer.getLastMarkerGap())).build());
+            }
+        }
+        TravelProfile profile = plugin.getBestTravelProfile();
         if (profile != null)
         {
-            panelComponent.getChildren().add(LineComponent.builder().left("Target").right(
-                "Y " + profile.yaw + "  P " + profile.pitch + "  Z " + profile.scale).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("Best overlap").right(
+                profile.overlappingTransitions + " / " + course.obstacles.length).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("Best gaps").right(
+                String.format("%.0f px (%d laps)", profile.markerGap, profile.samples)).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("Observed mouse").right(
+                String.format("%.0f px", profile.observedMouseTravel)).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("Best camera").right(
+                "Y " + profile.yaw + "  P " + profile.pitch + "  Z " + profile.zoom).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("Next experiment").right(
+                plugin.nextExperiment()).build());
         }
         else if (plugin.getTrackedObstacleCount() == 0)
         {
