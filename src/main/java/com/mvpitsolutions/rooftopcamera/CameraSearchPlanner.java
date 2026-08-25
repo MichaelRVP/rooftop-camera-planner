@@ -14,7 +14,7 @@ final class CameraSearchPlanner
         CameraCandidateStats anchor = history.first();
         if (anchor == null)
         {
-            return current;
+            return canonicalize(current);
         }
 
         List<CameraTarget> globalTargets = globalTargets(anchor, bounds);
@@ -87,7 +87,22 @@ final class CameraSearchPlanner
 
     private static void addUnique(List<CameraTarget> targets, CameraTarget target)
     {
-        if (targets.stream().noneMatch(existing -> existing.key().equals(target.key()))) targets.add(target);
+        CameraTarget canonical = canonicalize(target);
+        if (targets.stream().noneMatch(existing -> existing.key().equals(canonical.key())))
+        {
+            targets.add(canonical);
+        }
+    }
+
+    private static CameraTarget canonicalize(CameraTarget target)
+    {
+        return new CameraTarget(normalizeYaw(quantize(target.yaw, 16)),
+            quantize(target.pitch, 8), quantize(target.zoom, 16));
+    }
+
+    private static int quantize(int value, int step)
+    {
+        return Math.round((float) value / step) * step;
     }
 
     static int normalizeYaw(int yaw) { return ((yaw % 2048) + 2048) % 2048; }

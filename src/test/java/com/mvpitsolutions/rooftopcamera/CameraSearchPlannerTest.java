@@ -17,13 +17,29 @@ public class CameraSearchPlannerTest
     {
         SearchHistory history = new SearchHistory();
         CameraTarget current = new CameraTarget(100, 1288, 512);
-        assertEquals(current.key(), planner.nextTarget(history, null, current, bounds).key());
+        assertEquals(new CameraTarget(96, 1288, 512).key(),
+            planner.nextTarget(history, null, current, bounds).key());
 
-        sample(history, 100, 1288, 512, 1);
-        assertEquals(new CameraTarget(783, 1288, 512).key(),
+        sample(history, 96, 1288, 512, 1);
+        assertEquals(new CameraTarget(784, 1288, 512).key(),
             planner.nextTarget(history, history.best(), current, bounds).key());
-        sample(history, 783, 1288, 512, 2);
-        assertEquals(new CameraTarget(1465, 1288, 512).key(),
+        sample(history, 784, 1288, 512, 2);
+        assertEquals(new CameraTarget(1456, 1288, 512).key(),
+            planner.nextTarget(history, history.best(), current, bounds).key());
+    }
+
+    @Test
+    public void advancesAfterRecordedCameraRoundsRequestedYaw()
+    {
+        SearchHistory history = new SearchHistory();
+        CameraTarget current = new CameraTarget(112, 1792, 512);
+        sample(history, 112, 1792, 512, 1);
+
+        assertEquals(new CameraTarget(800, 1792, 512).key(),
+            planner.nextTarget(history, history.best(), current, bounds).key());
+
+        sample(history, 800, 1792, 512, 2);
+        assertEquals(new CameraTarget(1472, 1792, 512).key(),
             planner.nextTarget(history, history.best(), current, bounds).key());
     }
 
@@ -33,10 +49,10 @@ public class CameraSearchPlannerTest
         SearchHistory history = seededGlobals();
         CameraTarget target = planner.nextTarget(history, history.best(),
             new CameraTarget(0, 1288, 512), bounds);
-        assertEquals(new CameraTarget(427, 1288, 512).key(), target.key());
+        assertEquals(new CameraTarget(432, 1288, 512).key(), target.key());
 
-        sample(history, 427, 1288, 512, 1);
-        assertEquals(new CameraTarget(939, 1288, 512).key(),
+        sample(history, 432, 1288, 512, 1);
+        assertEquals(new CameraTarget(944, 1288, 512).key(),
             planner.nextTarget(history, history.best(), target, bounds).key());
     }
 
@@ -45,15 +61,15 @@ public class CameraSearchPlannerTest
     {
         SearchHistory history = seededGlobals();
         int[][] local = {
-            {427,1288,512}, {939,1288,512}, {683,1160,512},
-            {683,1416,512}, {683,1288,384}, {683,1288,640}
+            {432,1288,512}, {944,1288,512}, {688,1160,512},
+            {688,1416,512}, {688,1288,384}, {688,1288,640}
         };
         for (int[] camera : local) sample(history, camera[0], camera[1], camera[2], 1);
 
         assertEquals(9, history.totalSamples());
         CameraTarget confirmation = planner.nextTarget(history, history.best(),
             new CameraTarget(0, 1288, 512), bounds);
-        assertEquals(new CameraTarget(683, 1288, 512).key(), confirmation.key());
+        assertEquals(new CameraTarget(688, 1288, 512).key(), confirmation.key());
         sample(history, confirmation.yaw, confirmation.pitch, confirmation.zoom, 3);
         assertEquals(10, history.totalSamples());
         assertNull(planner.nextTarget(history, history.best(), confirmation, bounds));
@@ -76,8 +92,8 @@ public class CameraSearchPlannerTest
     {
         SearchHistory history = new SearchHistory();
         sample(history, 0, 1288, 512, 1);
-        sample(history, 683, 1288, 512, 3);
-        sample(history, 1365, 1288, 512, 2);
+        sample(history, 688, 1288, 512, 3);
+        sample(history, 1360, 1288, 512, 2);
         return history;
     }
 
