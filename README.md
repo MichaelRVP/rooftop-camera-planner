@@ -1,48 +1,87 @@
 # Rooftop Camera Planner
 
-Rooftop Camera Planner helps a player find and keep a low-mouse-travel camera
-layout for all nine OSRS rooftop Agility courses.
+Rooftop Camera Planner is a RuneLite plugin for players who want less fiddling
+with the camera while training Agility. It learns a practical view for each
+supported rooftop course on *your* client, then shows quiet M-markers over the
+next obstacle's safer click area when that saved camera view is active.
 
-## What it does
+![Canifis calibration overlay](assets/canifis-calibration.png)
 
-- Detects the current rooftop course and its ordered obstacles.
-- Highlights live obstacle clickboxes and the expected next obstacle.
-- Extracts a guaranteed-clickable inner rectangle from each obstacle's real,
-  possibly irregular screen-space click shape during complete laps.
-- Scores the cyclic route by maximizing consecutive clickbox overlaps, shared
-  overlap area, then minimizing the remaining gaps and cursor travel.
-- Persists every tested yaw, pitch, and zoom candidate for each course.
-- Finishes initial calibration in six valid laps, then offers an optional
-  two-lap refinement pass without discarding prior evidence.
-- Learns the active client's reachable pitch and zoom limits when repeated
-  adjustment input produces no movement, then replans without user setup.
-- Rejects yaw targets that repeated camera drags cannot reach, accounting for
-  course-forced camera behavior and standard versus expanded camera limits.
-- Draws the best learned clickboxes as static ghost markers only while the
-  camera matches their learned view, so stale markers cannot misdirect clicks.
-- Pauses the M-markers during each room-to-roof camera transition, waits for
-  the camera to settle, then applies one inexpensive per-lap alignment correction.
-- Excludes incidental actions such as collecting Marks of Grace from route
-  mouse-travel evidence.
-- Displays simple rotate, tilt, and zoom guidance to return to that view.
-- Keeps every learned profile local in RuneLite configuration.
+## The short version
 
-## What it never does
+1. Enable the plugin and start a supported rooftop course.
+2. Follow the compact radar while it samples a few valid laps.
+3. Once the camera is locked, keep that view and use the M-markers as a visual
+   aid for the next clicks.
 
-The plugin never moves the camera, moves the mouse, clicks, selects menu
-entries, or sends game input. The player remains in control of every action.
+The plugin keeps its learned camera profiles in your local RuneLite settings.
+There is no account login, network sync, uploaded gameplay data, or input
+automation.
 
-## Development client
+## What it helps with
 
-Close normal RuneLite and run:
+- Recognizes supported rooftop courses and their ordered obstacles.
+- Learns a low-travel camera layout from real, in-game click geometry.
+- Scores candidate views by overlap, remaining marker gap, and practical cursor
+  travel instead of pretending there is one perfect view for every setup.
+- Gives simple turn, tilt, and zoom guidance during calibration.
+- Learns reachable camera limits, including normal versus expanded pitch and
+  zoom limits, without asking the player to configure them first.
+- Detects forced rooftop camera shifts and avoids treating those laps as proof
+  that an otherwise good view is bad.
+- Ignores incidental actions, including Marks of Grace, when it evaluates the
+  obstacle route.
+- Keeps the screen clear while the camera is settling; markers return only when
+  their saved view is actually aligned.
+
+## Supported courses
+
+Draynor Village, Al Kharid, Varrock, Canifis, Falador, Seers' Village,
+Pollnivneach, Rellekka, and Ardougne.
+
+## What it deliberately does **not** do
+
+Rooftop Camera Planner never moves the camera, mouse, or character. It does not
+click obstacles, select menus, or issue any game input. It is a local visual
+planning aid; the player remains responsible for every in-game action.
+
+## Calibration that respects a real session
+
+Initial calibration uses six valid laps. A fall, a skipped obstacle, an
+unsettled room-to-roof transition, a forced camera change, or a Mark of Grace
+does not count as a clean calibration lap. Once a working view is found, turn
+on **Refine camera (+2 laps)** only when you want the plugin to look for a
+slightly better option without discarding the evidence it already collected.
+
+If the RuneLite client, display size, or your camera limits change enough to
+make a profile unreliable, the plugin asks for new evidence instead of drawing
+stale click markers.
+
+## Install and update
+
+When the plugin is available through the RuneLite Plugin Hub, install it from
+the hub and let RuneLite handle updates. For a development build:
 
 ```powershell
 .\gradlew.bat run
 ```
 
-Enable `Rooftop Camera Planner`, enter a rooftop course, and follow the camera
-guidance for each valid lap. The final obstacle ends the current lap immediately,
-so the next camera instruction appears before obstacle one. Falls, skipped
-obstacles, missing click geometry, incidental actions, and camera movement do
-not consume calibration laps. Results survive restarts; once six valid laps are
-complete, align with the winning camera and the saved click markers appear.
+Enable **Rooftop Camera Planner** in the development client, then begin a lap
+on a supported course.
+
+## Compatibility and support
+
+Version `0.1.2` was rebuilt and tested against the current RuneLite
+`latest.release` dependency after the August 25, 2026 game update. If a future
+game update changes rooftop object IDs or camera behavior, please include the
+course, a screenshot, and the RuneLite version in an issue so it can be
+reproduced cleanly.
+
+## Development
+
+```powershell
+.\gradlew.bat clean test
+```
+
+The project uses the standard Plugin Hub build and has no third-party runtime
+dependencies beyond RuneLite.
