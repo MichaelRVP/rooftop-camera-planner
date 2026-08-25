@@ -12,6 +12,7 @@ final class RooftopCameraOverlay extends OverlayPanel
 {
     private final RooftopCameraPlugin plugin;
     private final RooftopCameraConfig config;
+    private final CameraRadarComponent radar = new CameraRadarComponent();
 
     @Inject
     RooftopCameraOverlay(RooftopCameraPlugin plugin, RooftopCameraConfig config)
@@ -46,12 +47,18 @@ final class RooftopCameraOverlay extends OverlayPanel
             panelComponent.getChildren().add(LineComponent.builder().left("Live visibility").right(
                 String.format("%.0f", plugin.getCurrentScore())).build());
         }
-        panelComponent.getChildren().add(LineComponent.builder().left("Camera guidance").build());
-        panelComponent.getChildren().add(LineComponent.builder().left(plugin.cameraGuidance())
-            .leftColor(new Color(74, 220, 200)).build());
+        CameraGuidanceState guidance = plugin.getCameraGuidanceState();
+        if (guidance != null)
+        {
+            radar.setState(guidance);
+            panelComponent.getChildren().add(radar);
+        }
+        else
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left(plugin.cameraGuidance())
+                .leftColor(new Color(74, 220, 200)).build());
+        }
         LapOptimizer optimizer = plugin.getLapOptimizer();
-        panelComponent.getChildren().add(LineComponent.builder().left("Calibration").right(
-            plugin.getValidCalibrationLaps() + " / " + CameraSearchPlanner.MAX_VALID_LAPS + " valid laps").build());
         CameraTarget target = plugin.getSearchTarget();
         if (target != null)
         {

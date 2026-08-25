@@ -289,6 +289,21 @@ public class RooftopCameraPlugin extends Plugin
         return directionsTo(target);
     }
 
+    CameraGuidanceState getCameraGuidanceState()
+    {
+        CameraTarget target = getSearchTarget();
+        boolean calibration = target != null;
+        if (target == null && bestTravelProfile != null)
+        {
+            target = new CameraTarget(bestTravelProfile.yaw, bestTravelProfile.pitch, bestTravelProfile.zoom);
+        }
+        if (target == null) return null;
+        return new CameraGuidanceState(
+            signedYawDelta(client.getCameraYawTarget(), target.yaw),
+            target.pitch - client.getCameraPitchTarget(),
+            target.zoom - client.get3dZoom(), calibration, getValidCalibrationLaps());
+    }
+
     private boolean alignedTo(CameraTarget target)
     {
         int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
