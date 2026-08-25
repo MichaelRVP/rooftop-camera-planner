@@ -56,7 +56,6 @@ public class RooftopCameraPlugin extends Plugin
     @Inject private RooftopCameraConfig config;
     @Inject private RooftopCameraOverlay cameraOverlay;
     @Inject private RooftopSceneOverlay sceneOverlay;
-    @Inject private RooftopGhostOverlay ghostOverlay;
 
     private final Map<TileObject, Integer> tracked = new ConcurrentHashMap<>();
     private final LapOptimizer lapOptimizer = new LapOptimizer();
@@ -64,6 +63,7 @@ public class RooftopCameraPlugin extends Plugin
     private final CameraReachabilityTracker reachabilityTracker = new CameraReachabilityTracker();
     private final AutomaticCameraShiftDetector automaticCameraShiftDetector =
         new AutomaticCameraShiftDetector();
+    private final CameraSettleTracker cameraSettleTracker = new CameraSettleTracker();
     private RooftopCourse course;
     private TravelProfile bestTravelProfile;
     private ScreenMarkerLayout bestMarkerLayout;
@@ -75,6 +75,10 @@ public class RooftopCameraPlugin extends Plugin
     private int visibleObstacleCount;
     private int ticksSinceScan;
     private String calibrationNote;
+    private String lastMarkerRenderState;
+    private volatile CameraGuidanceState guidanceSnapshot;
+    private int calibrationTargetSamples = CameraSearchPlanner.INITIAL_VALID_LAPS;
+    private List<Rectangle> adjustedScreenMarkers = Collections.emptyList();
     private final AtomicBoolean wheelInputPending = new AtomicBoolean();
     private final AtomicBoolean cameraDragPending = new AtomicBoolean();
     private final AWTEventListener cameraInputObserver = event ->
@@ -106,7 +110,6 @@ public class RooftopCameraPlugin extends Plugin
     {
         overlayManager.add(cameraOverlay);
         overlayManager.add(sceneOverlay);
-        overlayManager.add(ghostOverlay);
         Toolkit.getDefaultToolkit().addAWTEventListener(cameraInputObserver,
             AWTEvent.MOUSE_WHEEL_EVENT_MASK | AWTEvent.MOUSE_MOTION_EVENT_MASK);
     }
@@ -116,7 +119,6 @@ public class RooftopCameraPlugin extends Plugin
     {
         overlayManager.remove(cameraOverlay);
         overlayManager.remove(sceneOverlay);
-        overlayManager.remove(ghostOverlay);
         Toolkit.getDefaultToolkit().removeAWTEventListener(cameraInputObserver);
         reset();
     }
@@ -138,6 +140,7 @@ public class RooftopCameraPlugin extends Plugin
             searchHistory = course == null ? new SearchHistory() : SearchHistory.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course)));
             activeSearchTarget = null;
+            calibrationTargetSamples = CameraSearchPlanner.INITIAL_VALID_LAPS;
             calibrationNote = null;
             if (course != null && !CALIBRATION_VERSION.equals(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, calibrationVersionKey(course))))
@@ -155,6 +158,8 @@ public class RooftopCameraPlugin extends Plugin
                 RooftopCameraConfig.GROUP, cameraBoundsKey()));
             reachabilityTracker.reset();
             automaticCameraShiftDetector.reset();
+            cameraSettleTracker.reset();
+            adjustedScreenMarkers = Collections.emptyList();
             bootstrapLegacyProfile();
             applyBestCandidate();
             scanScene();
@@ -163,8 +168,19 @@ public class RooftopCameraPlugin extends Plugin
         {
             currentScore = 0;
             visibleObstacleCount = 0;
+            lastMarkerRenderState = null;
             return;
         }
+
+        if (config.refineCamera())
+        {
+            calibrationTargetSamples = searchHistory.totalSamples() + 2;
+            activeSearchTarget = null;
+            calibrationNote = "REFINE MODE: TWO NEW LAPS";
+            configManager.setConfiguration(RooftopCameraConfig.GROUP, "refineCamera", false);
+        }
+
+        logMarkerRenderState();
 
         if (tracked.isEmpty() && ++ticksSinceScan >= 3)
         {
@@ -175,11 +191,21 @@ public class RooftopCameraPlugin extends Plugin
         List<Rectangle> boxes = orderedVisibleClickboxes();
         visibleObstacleCount = boxes.size();
         currentScore = LayoutScorer.score(boxes, client.getViewportWidth(), client.getViewportHeight());
+        if (cameraSettleTracker.observe(client.getCameraYawTarget(), client.getCameraPitchTarget(),
+            currentCameraZoom()))
+        {
+            List<Rectangle> saved = bestMarkerLayout == null ? Collections.emptyList()
+                : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
+            adjustedScreenMarkers = ScreenMarkerAligner.align(saved, liveSafeMarkers(),
+                client.getCanvasWidth(), client.getCanvasHeight());
+            calibrationNote = null;
+        }
     }
 
     @Subscribe
     public void onClientTick(ClientTick event)
     {
+        guidanceSnapshot = computeCameraGuidanceState();
         boolean wheelAdjusted = wheelInputPending.getAndSet(false);
         boolean dragAdjusted = cameraDragPending.getAndSet(false);
         if (wheelAdjusted || dragAdjusted)
@@ -233,11 +259,19 @@ public class RooftopCameraPlugin extends Plugin
     {
         if (course != null && course.contains(event.getId()))
         {
+            int obstacleIndex = course.indexOf(event.getId());
             lastClickedObstacle = event.getId();
+            if (obstacleIndex == 0 && bestMarkerLayout != null)
+            {
+                cameraSettleTracker.begin(client.getCameraYawTarget(), client.getCameraPitchTarget(),
+                    currentCameraZoom());
+                adjustedScreenMarkers = Collections.emptyList();
+                calibrationNote = "CAMERA SETTLING - MARKERS PAUSED";
+            }
             net.runelite.api.Point point = client.getMouseCanvasPosition();
             if (point != null)
             {
-                LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(course.indexOf(event.getId()),
+                LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(obstacleIndex,
                     point.getX(), point.getY(), client.getCameraYawTarget(),
                     client.getCameraPitchTarget(), currentCameraZoom(),
                     clickboxFor(event.getId(), point.getX(), point.getY()), alignedTo(alignmentTarget()));
@@ -282,13 +316,54 @@ public class RooftopCameraPlugin extends Plugin
     String getCalibrationNote() { return calibrationNote; }
     List<Rectangle> getScaledBestMarkers()
     {
-        if (!markersAvailable(searchPlanner.isComplete(searchHistory), bestMarkerLayout, bestTravelProfile,
-            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom()))
+        if (cameraSettleTracker.isPending()) return Collections.emptyList();
+        if (!markersAvailable(searchPlanner.isComplete(searchHistory, calibrationTargetSamples),
+            bestMarkerLayout, getCameraGuidanceState()))
         {
             return Collections.emptyList();
         }
-        return mergeLiveMarkers(bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight()),
-            liveSafeMarkers());
+        return adjustedScreenMarkers.isEmpty()
+            ? bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight())
+            : new ArrayList<>(adjustedScreenMarkers);
+    }
+
+    private void logMarkerRenderState()
+    {
+        boolean complete = searchPlanner.isComplete(searchHistory, calibrationTargetSamples);
+        CameraGuidanceState guidance = getCameraGuidanceState();
+        String state;
+        if (!complete)
+        {
+            state = "blocked:calibration " + searchHistory.totalSamples() + "/" + calibrationTargetSamples;
+        }
+        else if (bestMarkerLayout == null)
+        {
+            state = "blocked:no-layout";
+        }
+        else if (!bestMarkerLayout.verifiedInnerRectangles)
+        {
+            state = "blocked:unverified-layout count=" + bestMarkerLayout.markers.size();
+        }
+        else if (bestTravelProfile == null || guidance == null)
+        {
+            state = "blocked:no-profile layout=" + bestMarkerLayout.markers.size();
+        }
+        else if (guidance.calibration || !guidance.isAligned())
+        {
+            state = "blocked:camera delta=" + guidance.yawDelta + "/" + guidance.pitchDelta + "/"
+                + guidance.zoomDelta + " target=" + bestTravelProfile.yaw + "/" + bestTravelProfile.pitch
+                + "/" + bestTravelProfile.zoom;
+        }
+        else
+        {
+            state = "active:layout=" + bestMarkerLayout.markers.size() + " delta=" + guidance.yawDelta + "/"
+                + guidance.pitchDelta + "/" + guidance.zoomDelta;
+        }
+        if (!state.equals(lastMarkerRenderState))
+        {
+            log.info("Rooftop screen markers {}", state);
+            lastMarkerRenderState = state;
+        }
     }
 
     static List<Rectangle> mergeLiveMarkers(List<Rectangle> saved, Map<Integer, Rectangle> live)
@@ -297,7 +372,10 @@ public class RooftopCameraPlugin extends Plugin
         for (Map.Entry<Integer, Rectangle> entry : live.entrySet())
         {
             int index = entry.getKey();
-            if (index >= 0 && index < merged.size() && entry.getValue() != null)
+            // A completed calibration is the planned click layout.  Do not replace
+            // it with the currently visible obstacle or the guide collapses back
+            // onto the obstacle it is meant to predict.
+            if (index >= 0 && index < merged.size() && merged.get(index) == null && entry.getValue() != null)
             {
                 merged.set(index, new Rectangle(entry.getValue()));
             }
@@ -308,8 +386,16 @@ public class RooftopCameraPlugin extends Plugin
     static boolean markersAvailable(boolean calibrationComplete, ScreenMarkerLayout layout,
         TravelProfile profile, int yaw, int pitch, int zoom)
     {
+        CameraGuidanceState guidance = profile == null ? null : new CameraGuidanceState(
+            signedYawDelta(yaw, profile.yaw), profile.pitch - pitch, profile.zoom - zoom, false, 0);
+        return markersAvailable(calibrationComplete, layout, guidance);
+    }
+
+    static boolean markersAvailable(boolean calibrationComplete, ScreenMarkerLayout layout,
+        CameraGuidanceState guidance)
+    {
         return calibrationComplete && layout != null && layout.verifiedInnerRectangles
-            && cameraAligned(yaw, pitch, zoom, profile);
+            && guidance != null && !guidance.calibration && guidance.isAligned();
     }
 
     static boolean cameraAligned(int yaw, int pitch, int zoom, TravelProfile profile)
@@ -328,14 +414,15 @@ public class RooftopCameraPlugin extends Plugin
             && Math.abs(zoom - target.zoom) <= 8;
     }
     int getTestedCameraCount() { return searchHistory.testedCount(); }
-    int getValidCalibrationLaps() { return Math.min(searchHistory.totalSamples(), CameraSearchPlanner.MAX_VALID_LAPS); }
+    int getValidCalibrationLaps() { return Math.min(searchHistory.totalSamples(), calibrationTargetSamples); }
     CameraTarget getSearchTarget()
     {
         if (course == null) return null;
         if (activeSearchTarget == null)
         {
             activeSearchTarget = searchPlanner.nextTarget(
-                searchHistory, searchHistory.best(), currentCameraTarget(), cameraBounds);
+                searchHistory, searchHistory.bestOperational(), currentCameraTarget(), cameraBounds,
+                calibrationTargetSamples);
         }
         return activeSearchTarget;
     }
@@ -365,12 +452,18 @@ public class RooftopCameraPlugin extends Plugin
         if (alignedTo(target))
         {
             return "Calibration lap " + (getValidCalibrationLaps() + 1) + " / "
-                + CameraSearchPlanner.MAX_VALID_LAPS + " - hold camera";
+                + calibrationTargetSamples + " - hold camera";
         }
         return directionsTo(target);
     }
 
     CameraGuidanceState getCameraGuidanceState()
+    {
+        CameraGuidanceState snapshot = guidanceSnapshot;
+        return snapshot == null ? computeCameraGuidanceState() : snapshot;
+    }
+
+    private CameraGuidanceState computeCameraGuidanceState()
     {
         CameraTarget target = getSearchTarget();
         boolean calibration = target != null;
@@ -382,7 +475,7 @@ public class RooftopCameraPlugin extends Plugin
         return new CameraGuidanceState(
             signedYawDelta(client.getCameraYawTarget(), target.yaw),
             target.pitch - client.getCameraPitchTarget(),
-            target.zoom - currentCameraZoom(), calibration, getValidCalibrationLaps());
+            target.zoom - currentCameraZoom(), calibration, getValidCalibrationLaps(), calibrationTargetSamples);
     }
 
     private boolean alignedTo(CameraTarget target)
@@ -554,7 +647,7 @@ public class RooftopCameraPlugin extends Plugin
 
     private void learnFrom(LapOptimizer.CompletedLap lap)
     {
-        boolean searchComplete = searchPlanner.isComplete(searchHistory);
+        boolean searchComplete = searchPlanner.isComplete(searchHistory, calibrationTargetSamples);
         CameraTarget requested = searchComplete ? alignmentTarget() : getSearchTarget();
         if (!lap.stableCamera || Double.isNaN(lap.markerTravel) || requested == null
             || !cameraAligned(lap.yaw, lap.pitch, lap.zoom, requested))
@@ -582,15 +675,6 @@ public class RooftopCameraPlugin extends Plugin
         ScreenMarkerLayout layout = new ScreenMarkerLayout(client.getCanvasWidth(), client.getCanvasHeight(), lap.markers);
         if (searchComplete)
         {
-            bestMarkerLayout = layout;
-            CameraCandidateStats best = searchHistory.best();
-            if (best != null)
-            {
-                best.representativeLayout = layout;
-                configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
-                    searchHistory.serialize());
-            }
-            configManager.setConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course), layout.serialize());
             return;
         }
         searchHistory.getOrCreate(yaw, pitch, zoom).add(lap, layout);
@@ -643,7 +727,7 @@ public class RooftopCameraPlugin extends Plugin
 
     private void applyBestCandidate()
     {
-        CameraCandidateStats best = searchHistory.best();
+        CameraCandidateStats best = searchHistory.bestOperational();
         if (best == null) return;
         bestTravelProfile = new TravelProfile(best.yaw, best.pitch, best.zoom, best.averageCenter(),
             best.averageGap(), best.averageOverlap(), best.averageOverlapArea(), best.averageMouse(), best.samples);
@@ -695,6 +779,8 @@ public class RooftopCameraPlugin extends Plugin
         searchHistory = new SearchHistory();
         activeSearchTarget = null;
         cameraBounds = new CameraBounds();
+        cameraSettleTracker.reset();
+        adjustedScreenMarkers = Collections.emptyList();
         currentScore = 0;
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;

@@ -2,6 +2,9 @@ package com.mvpitsolutions.rooftopcamera;
 
 import org.junit.Test;
 
+import java.awt.Rectangle;
+import java.util.Arrays;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -83,24 +86,24 @@ public class CameraSearchPlannerTest
 
         assertEquals(9, history.totalSamples());
         CameraTarget precision = planner.nextTarget(history, history.best(),
-            new CameraTarget(0, 1288, 512), bounds);
+            new CameraTarget(0, 1288, 512), bounds, 18);
         assertEquals(new CameraTarget(560, 1288, 512).key(), precision.key());
         sample(history, precision.yaw, precision.pitch, precision.zoom, 3);
         assertEquals(10, history.totalSamples());
-        assertFalse(planner.isComplete(history));
+        assertFalse(planner.isComplete(history, 18));
 
         CameraTarget current = precision;
         for (int guard = 0; guard < 30; guard++)
         {
-            CameraTarget next = planner.nextTarget(history, history.best(), current, bounds);
+            CameraTarget next = planner.nextTarget(history, history.best(), current, bounds, 18);
             if (next == null) break;
             sample(history, next.yaw, next.pitch, next.zoom, 3);
             current = next;
         }
 
-        assertTrue(history.totalSamples() >= CameraSearchPlanner.MAX_VALID_LAPS);
-        assertNull(planner.nextTarget(history, history.best(), current, bounds));
-        assertTrue(planner.isComplete(history));
+        assertTrue(history.totalSamples() >= 18);
+        assertNull(planner.nextTarget(history, history.best(), current, bounds, 18));
+        assertTrue(planner.isComplete(history, 18));
     }
 
     @Test
@@ -115,7 +118,7 @@ public class CameraSearchPlannerTest
         assertTrue(restricted.learnZoomLimit(384, 512));
 
         CameraTarget next = planner.nextTarget(history, history.best(),
-            new CameraTarget(688, 1288, 512), restricted);
+            new CameraTarget(688, 1288, 512), restricted, 18);
 
         assertEquals(new CameraTarget(688, 1288, 640).key(), next.key());
     }
@@ -130,6 +133,30 @@ public class CameraSearchPlannerTest
         second.mouseTotal = 1;
         assertFalse(second.isBetterThan(first));
         assertFalse(first.isBetterThan(second));
+    }
+
+    @Test
+    public void measuredAxisEffectsCanSelectAnUntestedCompoundView()
+    {
+        SearchHistory history = new SearchHistory();
+        addLayout(history, 0, 1000, 500, 14, layout(100, 100));
+        addLayout(history, 128, 1000, 500, 1, layout(50, 100));
+        addLayout(history, 0, 1100, 500, 1, layout(100, 50));
+
+        CameraTarget predicted = planner.nextTarget(history, history.best(),
+            new CameraTarget(0, 1000, 500), bounds, 18);
+
+        assertEquals(new CameraTarget(128, 1100, 500).key(), predicted.key());
+        assertNull(history.get(predicted));
+    }
+
+    @Test
+    public void completedCampaignStopsBeforeMorePredictionWork()
+    {
+        SearchHistory history = new SearchHistory();
+        addLayout(history, 0, 1000, 500, CameraSearchPlanner.MAX_VALID_LAPS, layout(100, 100));
+
+        assertNull(planner.nextTarget(history, history.best(), new CameraTarget(0, 1000, 500), bounds));
     }
 
     private static SearchHistory seededGlobals()
@@ -152,5 +179,26 @@ public class CameraSearchPlannerTest
         candidate.centerTotal += 2000;
         candidate.mouseTotal += 3000;
         return candidate;
+    }
+
+    private static void addLayout(SearchHistory history, int yaw, int pitch, int zoom, int samples,
+        ScreenMarkerLayout layout)
+    {
+        CameraCandidateStats candidate = history.getOrCreate(yaw, pitch, zoom);
+        candidate.samples = samples;
+        candidate.representativeLayout = layout;
+        LapOptimizer.MarkerRouteScore score = LapOptimizer.scoreCyclicMarkers(
+            layout.markers.toArray(new Rectangle[0]));
+        candidate.overlapTotal = score.overlappingTransitions * samples;
+        candidate.overlapAreaTotal = score.overlapArea * samples;
+        candidate.gapTotal = score.gapTravel * samples;
+        candidate.centerTotal = score.centerTravel * samples;
+    }
+
+    private static ScreenMarkerLayout layout(int width, int height)
+    {
+        return new ScreenMarkerLayout(400, 400, Arrays.asList(
+            new Rectangle(0, 0, 10, 10), new Rectangle(width, 0, 10, 10),
+            new Rectangle(width, height, 10, 10), new Rectangle(0, height, 10, 10)));
     }
 }

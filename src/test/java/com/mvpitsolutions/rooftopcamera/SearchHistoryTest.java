@@ -59,4 +59,41 @@ public class SearchHistoryTest
         broad.gapTotal = 0; broad.centerTotal = 1000; broad.mouseTotal = 1000;
         assertEquals(broad, history.best());
     }
+
+    @Test
+    public void measuredOverlapOutranksSpeculativeDistance()
+    {
+        SearchHistory history = new SearchHistory();
+        CameraCandidateStats compact = history.getOrCreate(0, 1000, 500);
+        compact.samples = 1;
+        compact.representativeLayout = new ScreenMarkerLayout(500, 500, Arrays.asList(
+            new Rectangle(0, 0, 10, 10), new Rectangle(50, 0, 10, 10),
+            new Rectangle(50, 50, 10, 10), new Rectangle(0, 50, 10, 10)));
+        CameraCandidateStats misleadingOverlap = history.getOrCreate(16, 1000, 500);
+        misleadingOverlap.samples = 1;
+        misleadingOverlap.overlapTotal = 1;
+        misleadingOverlap.representativeLayout = new ScreenMarkerLayout(500, 500, Arrays.asList(
+            new Rectangle(0, 0, 100, 10), new Rectangle(90, 0, 10, 10),
+            new Rectangle(400, 400, 10, 10), new Rectangle(0, 400, 10, 10)));
+
+        assertEquals(misleadingOverlap, history.best());
+    }
+
+    @Test
+    public void operationalWinnerRejectsAnEffectivelyInvisibleStep()
+    {
+        SearchHistory history = new SearchHistory();
+        CameraCandidateStats unsafe = history.getOrCreate(0, 1000, 500);
+        unsafe.samples = 1;
+        unsafe.gapTotal = 1;
+        unsafe.representativeLayout = new ScreenMarkerLayout(500, 500, Arrays.asList(
+            new Rectangle(0, 0, 20, 20), new Rectangle(50, 0, 40, 4)));
+        CameraCandidateStats safe = history.getOrCreate(16, 1000, 500);
+        safe.samples = 1;
+        safe.gapTotal = 100;
+        safe.representativeLayout = new ScreenMarkerLayout(500, 500, Arrays.asList(
+            new Rectangle(0, 0, 20, 20), new Rectangle(50, 0, 20, 12)));
+
+        assertEquals(safe, history.bestOperational());
+    }
 }

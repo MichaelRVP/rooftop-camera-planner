@@ -5,16 +5,34 @@ import java.util.List;
 
 final class CameraSearchPlanner
 {
-    static final int MAX_VALID_LAPS = 16;
+    static final int INITIAL_VALID_LAPS = 6;
+    static final int MAX_VALID_LAPS = INITIAL_VALID_LAPS;
     private static final int[] GLOBAL_YAW_OFFSETS = {0, 683, 1365};
+    private final CompoundViewPredictor compoundPredictor = new CompoundViewPredictor();
 
     CameraTarget nextTarget(SearchHistory history, CameraCandidateStats ignoredBest,
         CameraTarget current, CameraBounds bounds)
     {
+        return nextTarget(history, ignoredBest, current, bounds, INITIAL_VALID_LAPS);
+    }
+
+    CameraTarget nextTarget(SearchHistory history, CameraCandidateStats ignoredBest,
+        CameraTarget current, CameraBounds bounds, int targetSamples)
+    {
+        if (history.totalSamples() >= targetSamples)
+        {
+            return null;
+        }
         CameraCandidateStats anchor = history.first();
         if (anchor == null)
         {
             return canonicalize(current);
+        }
+
+        if (history.totalSamples() >= 16)
+        {
+            CompoundViewPredictor.Prediction prediction = compoundPredictor.bestPrediction(history, bounds);
+            if (prediction != null && needsLap(history, prediction.target)) return prediction.target;
         }
 
         List<CameraTarget> globalTargets = globalTargets(anchor, bounds);
@@ -32,6 +50,18 @@ final class CameraSearchPlanner
             if (needsLap(history, target)) return target;
         }
 
+        if (history.totalSamples() == targetSamples - 1)
+        {
+            CameraCandidateStats winner = history.best();
+            return winner == null ? null : new CameraTarget(winner.yaw, winner.pitch, winner.zoom);
+        }
+
+        if (history.totalSamples() >= 12)
+        {
+            CompoundViewPredictor.Prediction prediction = compoundPredictor.bestPrediction(history, bounds);
+            if (prediction != null && needsLap(history, prediction.target)) return prediction.target;
+        }
+
         CameraCandidateStats measuredBest = history.best();
         if (measuredBest != null)
         {
@@ -43,7 +73,7 @@ final class CameraSearchPlanner
             }
         }
 
-        if (history.totalSamples() < MAX_VALID_LAPS)
+        if (history.totalSamples() < targetSamples)
         {
             CameraCandidateStats winner = history.best();
             return winner == null ? null : new CameraTarget(winner.yaw, winner.pitch, winner.zoom);
@@ -53,7 +83,12 @@ final class CameraSearchPlanner
 
     boolean isComplete(SearchHistory history)
     {
-        return history.totalSamples() >= MAX_VALID_LAPS;
+        return isComplete(history, INITIAL_VALID_LAPS);
+    }
+
+    boolean isComplete(SearchHistory history, int targetSamples)
+    {
+        return history.totalSamples() >= targetSamples;
     }
 
     private static boolean needsLap(SearchHistory history, CameraTarget target)

@@ -197,14 +197,13 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
         g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
         g.setColor(MUTED);
         String label = state.calibration
-            ? "CALIBRATION  " + Math.min(state.completedLaps, CameraSearchPlanner.MAX_VALID_LAPS)
-                + " / " + CameraSearchPlanner.MAX_VALID_LAPS
+            ? "CALIBRATION  " + Math.min(state.completedLaps, state.targetLaps)
+                + " / " + state.targetLaps
             : "CALIBRATION COMPLETE";
         g.drawString(label, x, y);
         int gap = 3;
-        int segmentWidth = (width - (CameraSearchPlanner.MAX_VALID_LAPS - 1) * gap)
-            / CameraSearchPlanner.MAX_VALID_LAPS;
-        for (int i = 0; i < CameraSearchPlanner.MAX_VALID_LAPS; i++)
+        int segmentWidth = (width - (state.targetLaps - 1) * gap) / state.targetLaps;
+        for (int i = 0; i < state.targetLaps; i++)
         {
             g.setColor(!state.calibration || i < state.completedLaps ? AQUA : TRACK);
             g.fillRoundRect(x + i * (segmentWidth + gap), y + 6, segmentWidth, 7, 4, 4);

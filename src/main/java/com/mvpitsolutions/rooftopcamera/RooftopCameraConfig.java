@@ -20,6 +20,9 @@ public interface RooftopCameraConfig extends Config
     @ConfigItem(keyName = "showDiagnostics", name = "Show optimizer diagnostics", description = "Show detailed camera-search evidence and raw route measurements")
     default boolean showDiagnostics() { return false; }
 
+    @ConfigItem(keyName = "refineCamera", name = "Refine camera (+2 laps)", description = "Turn on to test two additional camera views while preserving all existing calibration history")
+    default boolean refineCamera() { return false; }
+
     @Alpha
     @ConfigItem(keyName = "obstacleColor", name = "Obstacle color", description = "Color used for normal obstacle clickboxes")
     default Color obstacleColor() { return new Color(65, 214, 196, 90); }

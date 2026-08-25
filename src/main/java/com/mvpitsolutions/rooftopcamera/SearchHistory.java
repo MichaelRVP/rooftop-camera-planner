@@ -46,6 +46,19 @@ final class SearchHistory
         return best;
     }
 
+    CameraCandidateStats bestOperational()
+    {
+        CameraCandidateStats best = null;
+        for (CameraCandidateStats candidate : candidates.values())
+        {
+            if (candidate.isEligible() && candidate.isOperational() && candidate.isBetterThan(best))
+            {
+                best = candidate;
+            }
+        }
+        return best == null ? best() : best;
+    }
+
     int testedCount()
     {
         int count = 0;

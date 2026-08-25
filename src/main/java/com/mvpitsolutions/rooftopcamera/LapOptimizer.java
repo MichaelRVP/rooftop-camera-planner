@@ -12,6 +12,7 @@ final class LapOptimizer
         final double mouseTravel;
         final double markerTravel;
         final double markerGap;
+        final double attainableTravel;
         final double overlapArea;
         final int overlappingTransitions;
         final int yaw;
@@ -26,6 +27,7 @@ final class LapOptimizer
             this.mouseTravel = mouseTravel;
             this.markerTravel = markerScore.centerTravel;
             this.markerGap = markerScore.gapTravel;
+            this.attainableTravel = markerScore.attainableTravel;
             this.overlapArea = markerScore.overlapArea;
             this.overlappingTransitions = markerScore.overlappingTransitions;
             this.yaw = yaw;
@@ -198,14 +200,16 @@ final class LapOptimizer
     {
         final double centerTravel;
         final double gapTravel;
+        final double attainableTravel;
         final double overlapArea;
         final int overlappingTransitions;
 
-        MarkerRouteScore(double centerTravel, double gapTravel, double overlapArea,
+        MarkerRouteScore(double centerTravel, double gapTravel, double attainableTravel, double overlapArea,
             int overlappingTransitions)
         {
             this.centerTravel = centerTravel;
             this.gapTravel = gapTravel;
+            this.attainableTravel = attainableTravel;
             this.overlapArea = overlapArea;
             this.overlappingTransitions = overlappingTransitions;
         }
@@ -215,7 +219,7 @@ final class LapOptimizer
     {
         if (markers == null || markers.length == 0)
         {
-            return new MarkerRouteScore(Double.NaN, Double.NaN, Double.NaN, 0);
+            return new MarkerRouteScore(Double.NaN, Double.NaN, Double.NaN, Double.NaN, 0);
         }
         double centerTotal = 0;
         double gapTotal = 0;
@@ -227,7 +231,7 @@ final class LapOptimizer
             Rectangle to = markers[(i + 1) % markers.length];
             if (from == null || to == null)
             {
-                return new MarkerRouteScore(Double.NaN, Double.NaN, Double.NaN, 0);
+                return new MarkerRouteScore(Double.NaN, Double.NaN, Double.NaN, Double.NaN, 0);
             }
             centerTotal += Math.hypot(to.getCenterX() - from.getCenterX(), to.getCenterY() - from.getCenterY());
             double dx = Math.max(0, Math.max(from.x - (to.x + to.width), to.x - (from.x + from.width)));
@@ -240,7 +244,8 @@ final class LapOptimizer
                 overlapArea += (double) intersection.width * intersection.height;
             }
         }
-        return new MarkerRouteScore(centerTotal, gapTotal, overlapArea, overlaps);
+        double attainable = AttainableRouteOptimizer.solve(markers).travel;
+        return new MarkerRouteScore(centerTotal, gapTotal, attainable, overlapArea, overlaps);
     }
 
     private static Rectangle copy(Rectangle rectangle)

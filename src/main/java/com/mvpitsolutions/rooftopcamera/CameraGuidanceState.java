@@ -7,15 +7,24 @@ final class CameraGuidanceState
     final int zoomDelta;
     final boolean calibration;
     final int completedLaps;
+    final int targetLaps;
 
     CameraGuidanceState(int yawDelta, int pitchDelta, int zoomDelta,
         boolean calibration, int completedLaps)
+    {
+        this(yawDelta, pitchDelta, zoomDelta, calibration, completedLaps,
+            CameraSearchPlanner.INITIAL_VALID_LAPS);
+    }
+
+    CameraGuidanceState(int yawDelta, int pitchDelta, int zoomDelta,
+        boolean calibration, int completedLaps, int targetLaps)
     {
         this.yawDelta = yawDelta;
         this.pitchDelta = pitchDelta;
         this.zoomDelta = zoomDelta;
         this.calibration = calibration;
         this.completedLaps = completedLaps;
+        this.targetLaps = Math.max(1, targetLaps);
     }
 
     boolean isYawAligned() { return Math.abs(yawDelta) <= 8; }

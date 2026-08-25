@@ -33,7 +33,7 @@ public class ScreenMarkerLayoutTest
     }
 
     @Test
-    public void liveClickboxReplacesOnlyItsStaleSavedMarker()
+    public void calibratedScreenMarkerWinsOverLiveObstacleClickbox()
     {
         List<Rectangle> saved = Arrays.asList(
             new Rectangle(10, 10, 20, 20), new Rectangle(40, 40, 20, 20));
@@ -42,8 +42,19 @@ public class ScreenMarkerLayoutTest
         List<Rectangle> merged = RooftopCameraPlugin.mergeLiveMarkers(saved,
             Collections.singletonMap(0, live));
 
-        assertEquals(live, merged.get(0));
+        assertEquals(saved.get(0), merged.get(0));
         assertEquals(saved.get(1), merged.get(1));
         assertEquals(new Rectangle(10, 10, 20, 20), saved.get(0));
+    }
+
+    @Test
+    public void liveClickboxFillsOnlyAMissingCalibratedMarker()
+    {
+        Rectangle live = new Rectangle(14, 18, 28, 24);
+        List<Rectangle> merged = RooftopCameraPlugin.mergeLiveMarkers(
+            Arrays.asList(null, new Rectangle(40, 40, 20, 20)), Collections.singletonMap(0, live));
+
+        assertEquals(live, merged.get(0));
+        assertEquals(new Rectangle(40, 40, 20, 20), merged.get(1));
     }
 }

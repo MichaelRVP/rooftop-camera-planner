@@ -14,6 +14,8 @@ final class CameraCandidateStats
     double mouseTotal;
     ScreenMarkerLayout representativeLayout;
     private double representativeCost = Double.POSITIVE_INFINITY;
+    private ScreenMarkerLayout cachedAttainableLayout;
+    private double cachedAttainableTravel = Double.POSITIVE_INFINITY;
 
     CameraCandidateStats(int yaw, int pitch, int zoom)
     {
@@ -30,8 +32,8 @@ final class CameraCandidateStats
         gapTotal += lap.markerGap;
         centerTotal += lap.markerTravel;
         mouseTotal += lap.mouseTravel;
-        double cost = -lap.overlappingTransitions * 1_000_000_000d - lap.overlapArea * 1_000d
-            + lap.markerGap * 10d + lap.markerTravel;
+        double cost = lap.attainableTravel * 1_000_000d
+            - lap.overlappingTransitions * 1_000d - lap.overlapArea;
         if (layout != null && cost < representativeCost)
         {
             representativeCost = cost;
@@ -58,8 +60,38 @@ final class CameraCandidateStats
         if (overlapArea != 0) return overlapArea > 0;
         int gap = Double.compare(averageGap(), other.averageGap());
         if (gap != 0) return gap < 0;
+        double thisAttainable = representativeAttainableTravel();
+        double otherAttainable = other.representativeAttainableTravel();
+        int attainable = Double.compare(thisAttainable, otherAttainable);
+        if (attainable != 0 && (Double.isFinite(thisAttainable) || Double.isFinite(otherAttainable)))
+        {
+            return attainable < 0;
+        }
         int center = Double.compare(averageCenter(), other.averageCenter());
         if (center != 0) return center < 0;
         return false;
+    }
+
+    double representativeAttainableTravel()
+    {
+        if (representativeLayout == null) return Double.POSITIVE_INFINITY;
+        if (representativeLayout != cachedAttainableLayout)
+        {
+            cachedAttainableLayout = representativeLayout;
+            cachedAttainableTravel = AttainableRouteOptimizer.solve(
+                representativeLayout.markers.toArray(new java.awt.Rectangle[0])).travel;
+        }
+        return cachedAttainableTravel;
+    }
+
+    boolean isOperational()
+    {
+        if (representativeLayout == null || !representativeLayout.verifiedInnerRectangles
+            || representativeLayout.markers.isEmpty()) return false;
+        for (java.awt.Rectangle marker : representativeLayout.markers)
+        {
+            if (marker == null || marker.width < 8 || marker.height < 8) return false;
+        }
+        return true;
     }
 }
