@@ -47,6 +47,10 @@ final class RooftopSceneOverlay extends Overlay
             Color color = isNext ? config.nextColor() : config.obstacleColor();
             graphics.setStroke(new BasicStroke(isNext ? 3f : 1.5f));
             OverlayUtil.renderPolygon(graphics, clickbox, color);
+            java.awt.Rectangle bounds = clickbox.getBounds();
+            OverlayUtil.renderTextLocation(graphics,
+                new net.runelite.api.Point((int) bounds.getCenterX(), (int) bounds.getCenterY()),
+                Integer.toString(entry.getValue() + 1), color);
         }
         return null;
     }

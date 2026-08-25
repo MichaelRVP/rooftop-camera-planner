@@ -8,6 +8,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.IntPredicate;
+import java.util.function.IntUnaryOperator;
+import java.util.function.ToIntFunction;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -46,6 +49,8 @@ public class RooftopCameraPlugin extends Plugin
     private CameraProfile bestProfile;
     private double currentScore;
     private int lastClickedObstacle = -1;
+    private int visibleObstacleCount;
+    private int ticksSinceScan;
 
     @Provides
     RooftopCameraConfig provideConfig(ConfigManager manager)
@@ -84,10 +89,18 @@ public class RooftopCameraPlugin extends Plugin
         if (course == null)
         {
             currentScore = 0;
+            visibleObstacleCount = 0;
             return;
         }
 
+        if (tracked.isEmpty() && ++ticksSinceScan >= 3)
+        {
+            ticksSinceScan = 0;
+            scanScene();
+        }
+
         List<Rectangle> boxes = orderedVisibleClickboxes();
+        visibleObstacleCount = boxes.size();
         currentScore = LayoutScorer.score(boxes, client.getViewportWidth(), client.getViewportHeight());
         if (config.autoLearn() && boxes.size() >= 2 && (bestProfile == null || currentScore > bestProfile.score + 0.5))
         {
@@ -127,7 +140,14 @@ public class RooftopCameraPlugin extends Plugin
     CameraProfile getBestProfile() { return bestProfile; }
     double getCurrentScore() { return currentScore; }
     Map<TileObject, Integer> getTracked() { return tracked; }
+    int getVisibleObstacleCount() { return visibleObstacleCount; }
+    int getTrackedObstacleCount() { return tracked.size(); }
     int getNextObstacleId() { return course == null ? -1 : course.nextAfter(lastClickedObstacle); }
+    int getNextObstacleNumber()
+    {
+        int next = getNextObstacleId();
+        return course == null || next < 0 ? -1 : course.indexOf(next) + 1;
+    }
 
     String cameraGuidance()
     {
@@ -165,10 +185,25 @@ public class RooftopCameraPlugin extends Plugin
 
     private void onTileObject(TileObject oldObject, TileObject newObject)
     {
-        tracked.remove(oldObject);
-        if (newObject != null && course != null && course.contains(newObject.getId()))
+        updateTracked(tracked, oldObject, newObject, TileObject::getId,
+            course == null ? id -> false : course::contains,
+            course == null ? id -> -1 : course::indexOf);
+    }
+
+    static <T> void updateTracked(Map<T, Integer> objects, T oldObject, T newObject,
+        ToIntFunction<T> idReader, IntPredicate acceptedId, IntUnaryOperator routeIndex)
+    {
+        if (oldObject != null)
         {
-            tracked.put(newObject, course.indexOf(newObject.getId()));
+            objects.remove(oldObject);
+        }
+        if (newObject != null)
+        {
+            int id = idReader.applyAsInt(newObject);
+            if (acceptedId.test(id))
+            {
+                objects.put(newObject, routeIndex.applyAsInt(id));
+            }
         }
     }
 
@@ -229,5 +264,7 @@ public class RooftopCameraPlugin extends Plugin
         bestProfile = null;
         currentScore = 0;
         lastClickedObstacle = -1;
+        visibleObstacleCount = 0;
+        ticksSinceScan = 0;
     }
 }
