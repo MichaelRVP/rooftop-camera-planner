@@ -12,7 +12,7 @@ public class CameraSearchPlannerTest
     {
         SearchHistory history = new SearchHistory();
         CameraTarget current = new CameraTarget(0, 1288, 512);
-        CameraTarget target = new CameraSearchPlanner().nextTarget(history, null, current);
+        CameraTarget target = new CameraSearchPlanner().nextTarget(history, null, current, new CameraBounds());
         assertEquals(current.key(), target.key());
     }
 
@@ -28,7 +28,7 @@ public class CameraSearchPlannerTest
         baseline.mouseTotal = 5000;
 
         CameraTarget target = new CameraSearchPlanner().nextTarget(history, history.best(),
-            new CameraTarget(0, 1288, 512));
+            new CameraTarget(0, 1288, 512), new CameraBounds());
         assertEquals(new CameraTarget(1792, 1288, 512).key(), target.key());
     }
 
@@ -48,7 +48,19 @@ public class CameraSearchPlannerTest
                     1288 + p * steps[level][1], 512 + z * steps[level][2]);
             }
         }
-        assertNull(new CameraSearchPlanner().nextTarget(history, baseline, new CameraTarget(0, 1288, 512)));
+        assertNull(new CameraSearchPlanner().nextTarget(history, baseline,
+            new CameraTarget(0, 1288, 512), new CameraBounds()));
+    }
+
+    @Test
+    public void skipsCameraTargetsOutsideLearnedBounds()
+    {
+        SearchHistory history = new SearchHistory();
+        CameraCandidateStats baseline = eligible(history, 0, 1288, 512);
+        CameraBounds bounds = new CameraBounds(1288, 2040, 512, 2048);
+        CameraTarget target = new CameraSearchPlanner().nextTarget(history, baseline,
+            new CameraTarget(0, 1288, 512), bounds);
+        assertEquals(new CameraTarget(1792, 1288, 512).key(), target.key());
     }
 
     private static CameraCandidateStats eligible(SearchHistory history, int yaw, int pitch, int zoom)

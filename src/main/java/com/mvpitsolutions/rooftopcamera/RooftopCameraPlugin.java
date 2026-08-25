@@ -3,6 +3,8 @@ package com.mvpitsolutions.rooftopcamera;
 import com.google.inject.Provides;
 import java.awt.Rectangle;
 import java.awt.Shape;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -32,15 +34,19 @@ import net.runelite.api.events.WallObjectDespawned;
 import net.runelite.api.events.WallObjectSpawned;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.input.MouseListener;
+import net.runelite.client.input.MouseManager;
+import net.runelite.client.input.MouseWheelListener;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 @PluginDescriptor(name = "Rooftop Camera Planner", description = "Learns low-movement camera layouts for rooftop Agility", tags = {"agility", "rooftop", "camera", "optimizer"})
-public class RooftopCameraPlugin extends Plugin
+public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseWheelListener
 {
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
+    @Inject private MouseManager mouseManager;
     @Inject private ConfigManager configManager;
     @Inject private RooftopCameraConfig config;
     @Inject private RooftopCameraOverlay cameraOverlay;
@@ -50,10 +56,12 @@ public class RooftopCameraPlugin extends Plugin
     private final Map<TileObject, Integer> tracked = new ConcurrentHashMap<>();
     private final LapOptimizer lapOptimizer = new LapOptimizer();
     private final CameraSearchPlanner searchPlanner = new CameraSearchPlanner();
+    private final CameraReachabilityTracker reachabilityTracker = new CameraReachabilityTracker();
     private RooftopCourse course;
     private TravelProfile bestTravelProfile;
     private ScreenMarkerLayout bestMarkerLayout;
     private SearchHistory searchHistory = new SearchHistory();
+    private CameraBounds cameraBounds = new CameraBounds();
     private double currentScore;
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
@@ -71,6 +79,8 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.add(cameraOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(ghostOverlay);
+        mouseManager.registerMouseListener(this);
+        mouseManager.registerMouseWheelListener(this);
     }
 
     @Override
@@ -79,6 +89,8 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.remove(cameraOverlay);
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(ghostOverlay);
+        mouseManager.unregisterMouseListener(this);
+        mouseManager.unregisterMouseWheelListener(this);
         reset();
     }
 
@@ -98,6 +110,9 @@ public class RooftopCameraPlugin extends Plugin
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course)));
             searchHistory = course == null ? new SearchHistory() : SearchHistory.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course)));
+            cameraBounds = CameraBounds.parse(configManager.getConfiguration(
+                RooftopCameraConfig.GROUP, cameraBoundsKey()));
+            reachabilityTracker.reset();
             bootstrapLegacyProfile();
             applyBestCandidate();
             scanScene();
@@ -123,6 +138,11 @@ public class RooftopCameraPlugin extends Plugin
     @Subscribe
     public void onClientTick(ClientTick event)
     {
+        if (reachabilityTracker.observe(getSearchTarget(), client.getCameraPitchTarget(),
+            client.get3dZoom(), cameraBounds))
+        {
+            persistCameraBounds();
+        }
         if (course == null || !lapOptimizer.isActive())
         {
             return;
@@ -193,7 +213,7 @@ public class RooftopCameraPlugin extends Plugin
     CameraTarget getSearchTarget()
     {
         if (course == null) return null;
-        return searchPlanner.nextTarget(searchHistory, searchHistory.best(), currentCameraTarget());
+        return searchPlanner.nextTarget(searchHistory, searchHistory.best(), currentCameraTarget(), cameraBounds);
     }
     int getSearchTargetSamples()
     {
@@ -239,6 +259,26 @@ public class RooftopCameraPlugin extends Plugin
     {
         return ((target - current + 1024) & 2047) - 1024;
     }
+
+    @Override
+    public MouseWheelEvent mouseWheelMoved(MouseWheelEvent event)
+    {
+        reachabilityTracker.zoomInput();
+        return event;
+    }
+
+    @Override public MouseEvent mouseDragged(MouseEvent event)
+    {
+        reachabilityTracker.cameraDrag(client.getCameraYawTarget());
+        return event;
+    }
+
+    @Override public MouseEvent mouseClicked(MouseEvent event) { return event; }
+    @Override public MouseEvent mousePressed(MouseEvent event) { return event; }
+    @Override public MouseEvent mouseReleased(MouseEvent event) { return event; }
+    @Override public MouseEvent mouseEntered(MouseEvent event) { return event; }
+    @Override public MouseEvent mouseExited(MouseEvent event) { return event; }
+    @Override public MouseEvent mouseMoved(MouseEvent event) { return event; }
 
     private RooftopCourse detectCourse()
     {
@@ -409,6 +449,16 @@ public class RooftopCameraPlugin extends Plugin
         return "searchHistory." + course.name().toLowerCase();
     }
 
+    private static String cameraBoundsKey()
+    {
+        return "cameraBounds";
+    }
+
+    private void persistCameraBounds()
+    {
+        configManager.setConfiguration(RooftopCameraConfig.GROUP, cameraBoundsKey(), cameraBounds.serialize());
+    }
+
     private void reset()
     {
         tracked.clear();
@@ -417,6 +467,8 @@ public class RooftopCameraPlugin extends Plugin
         bestMarkerLayout = null;
         lapOptimizer.reset(0);
         searchHistory = new SearchHistory();
+        cameraBounds = new CameraBounds();
+        reachabilityTracker.reset();
         currentScore = 0;
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;

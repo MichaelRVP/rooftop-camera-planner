@@ -9,7 +9,8 @@ final class CameraSearchPlanner
         {256, 128, 128}, {128, 64, 64}, {64, 32, 32}, {32, 16, 16}, {16, 8, 16}
     };
 
-    CameraTarget nextTarget(SearchHistory history, CameraCandidateStats best, CameraTarget current)
+    CameraTarget nextTarget(SearchHistory history, CameraCandidateStats best, CameraTarget current,
+        CameraBounds bounds)
     {
         CameraTarget center = best == null ? current : new CameraTarget(best.yaw, best.pitch, best.zoom);
         if (best == null)
@@ -19,8 +20,9 @@ final class CameraSearchPlanner
         }
         for (int level = 0; level < STEPS.length; level++)
         {
-            for (CameraTarget target : neighbors(center, STEPS[level], level == STEPS.length - 1))
+            for (CameraTarget target : neighbors(center, STEPS[level], level == STEPS.length - 1, bounds))
             {
+                if (target.key().equals(center.key())) continue;
                 CameraCandidateStats candidate = history.get(target);
                 if (candidate == null || candidate.samples < 2) return target;
             }
@@ -28,7 +30,8 @@ final class CameraSearchPlanner
         return null;
     }
 
-    private static List<CameraTarget> neighbors(CameraTarget center, int[] step, boolean includeDiagonals)
+    private static List<CameraTarget> neighbors(CameraTarget center, int[] step, boolean includeDiagonals,
+        CameraBounds bounds)
     {
         List<CameraTarget> targets = new ArrayList<>();
         for (int y = -1; y <= 1; y++)
@@ -39,9 +42,13 @@ final class CameraSearchPlanner
                 {
                     int changed = Math.abs(y) + Math.abs(p) + Math.abs(z);
                     if (changed == 0 || (!includeDiagonals && changed != 1)) continue;
-                    targets.add(new CameraTarget(normalizeYaw(center.yaw + y * step[0]),
-                        clamp(center.pitch + p * step[1], 128, 2040),
-                        clamp(center.zoom + z * step[2], 128, 2048)));
+                    CameraTarget target = new CameraTarget(normalizeYaw(center.yaw + y * step[0]),
+                        bounds.clampPitch(center.pitch + p * step[1]),
+                        bounds.clampZoom(center.zoom + z * step[2]));
+                    if (targets.stream().noneMatch(existing -> existing.key().equals(target.key())))
+                    {
+                        targets.add(target);
+                    }
                 }
             }
         }
@@ -49,5 +56,4 @@ final class CameraSearchPlanner
     }
 
     static int normalizeYaw(int yaw) { return ((yaw % 2048) + 2048) % 2048; }
-    private static int clamp(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }
 }

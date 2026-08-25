@@ -13,6 +13,8 @@ layout for all nine OSRS rooftop Agility courses.
 - Persists every tested yaw, pitch, and zoom candidate for each course.
 - Runs a coarse-to-fine neighborhood search, requiring two complete laps per
   candidate and testing diagonal interactions at the final resolution.
+- Learns the active client's reachable pitch and zoom limits when repeated
+  adjustment input produces no movement, then replans without user setup.
 - Draws the best learned clickboxes as static ghost markers so the cursor can
   be positioned before the next obstacle becomes clickable.
 - Displays simple rotate, tilt, and zoom guidance to return to that view.
