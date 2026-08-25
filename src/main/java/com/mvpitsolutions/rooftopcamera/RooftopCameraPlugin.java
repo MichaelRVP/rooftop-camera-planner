@@ -1,8 +1,12 @@
 package com.mvpitsolutions.rooftopcamera;
 
 import com.google.inject.Provides;
+import java.awt.AWTEvent;
 import java.awt.Rectangle;
 import java.awt.Shape;
+import java.awt.Toolkit;
+import java.awt.event.AWTEventListener;
+import java.awt.event.MouseWheelEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -40,6 +44,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 public class RooftopCameraPlugin extends Plugin
 {
     private static final String CALIBRATION_VERSION = "bounded-10-v1";
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(RooftopCameraPlugin.class);
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
     @Inject private ConfigManager configManager;
@@ -60,6 +65,15 @@ public class RooftopCameraPlugin extends Plugin
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
     private int ticksSinceScan;
+    private final AWTEventListener zoomDiagnostic = event ->
+    {
+        if (event instanceof MouseWheelEvent)
+        {
+            MouseWheelEvent wheel = (MouseWheelEvent) event;
+            LOG.warn("ROOFTOP_ZOOM_PROBE rotation={} consumed={} varc74={} renderedZoom={}",
+                wheel.getWheelRotation(), wheel.isConsumed(), client.getVarcIntValue(74), client.get3dZoom());
+        }
+    };
 
     @Provides
     RooftopCameraConfig provideConfig(ConfigManager manager)
@@ -73,6 +87,7 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.add(cameraOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(ghostOverlay);
+        Toolkit.getDefaultToolkit().addAWTEventListener(zoomDiagnostic, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
     }
 
     @Override
@@ -81,6 +96,7 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.remove(cameraOverlay);
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(ghostOverlay);
+        Toolkit.getDefaultToolkit().removeAWTEventListener(zoomDiagnostic);
         reset();
     }
 
