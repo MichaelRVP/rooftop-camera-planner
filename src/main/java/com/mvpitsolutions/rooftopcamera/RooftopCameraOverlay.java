@@ -18,7 +18,7 @@ final class RooftopCameraOverlay extends OverlayPanel
     {
         this.plugin = plugin;
         this.config = config;
-        panelComponent.setPreferredSize(new Dimension(285, 0));
+        panelComponent.setPreferredSize(new Dimension(360, 0));
     }
 
     @Override
@@ -43,12 +43,14 @@ final class RooftopCameraOverlay extends OverlayPanel
                 String.format("%.0f", plugin.getCurrentScore())).build());
         }
         CameraGuidanceState guidance = plugin.getCameraGuidanceState();
+        TravelProfile profile = plugin.getBestTravelProfile();
         if (guidance != null)
         {
             radar.setState(guidance);
             LapOptimizer optimizer = plugin.getLapOptimizer();
             radar.setRouteState(course.displayName, next, optimizer.getProgress(),
                 course.obstacles.length, optimizer.isCurrentLapStableSoFar());
+            radar.setHistoryState(profile, optimizer.getLastTravel());
             panelComponent.getChildren().add(radar);
         }
         else
@@ -86,7 +88,6 @@ final class RooftopCameraOverlay extends OverlayPanel
                 }
             }
         }
-        TravelProfile profile = plugin.getBestTravelProfile();
         if (profile != null)
         {
             if (config.showDiagnostics())
