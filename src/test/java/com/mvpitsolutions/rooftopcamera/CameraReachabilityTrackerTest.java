@@ -17,10 +17,10 @@ public class CameraReachabilityTrackerTest
         tracker.observe(target, 1288, 512, bounds);
         for (int i = 0; i < 4; i++)
         {
-            tracker.zoomInput(-1);
+            tracker.zoomInput(1);
             assertFalse(tracker.observe(target, 1288, 512, bounds));
         }
-        tracker.zoomInput(-1);
+        tracker.zoomInput(1);
         assertTrue(tracker.observe(target, 1288, 512, bounds));
         assertEquals(512, bounds.clampZoom(384));
     }
@@ -34,12 +34,12 @@ public class CameraReachabilityTrackerTest
         tracker.observe(target, 1288, 512, bounds);
         for (int i = 0; i < 4; i++)
         {
-            tracker.zoomInput(-1);
+            tracker.zoomInput(1);
             tracker.observe(target, 1288, 512, bounds);
         }
-        tracker.zoomInput(-1);
+        tracker.zoomInput(1);
         tracker.observe(target, 1288, 496, bounds);
-        tracker.zoomInput(-1);
+        tracker.zoomInput(1);
         assertFalse(tracker.observe(target, 1288, 496, bounds));
         assertEquals(384, bounds.clampZoom(384));
     }
@@ -53,7 +53,7 @@ public class CameraReachabilityTrackerTest
         tracker.observe(target, 1288, 512, bounds);
         for (int i = 0; i < 8; i++)
         {
-            tracker.zoomInput(1);
+            tracker.zoomInput(-1);
             assertFalse(tracker.observe(target, 1288, 512, bounds));
         }
         assertEquals(384, bounds.clampZoom(384));
@@ -104,10 +104,4 @@ public class CameraReachabilityTrackerTest
         assertEquals(300, CameraBounds.parse("1200,1800,512,512").clampZoom(300));
     }
 
-    @Test
-    public void geometricCameraDistanceTracksCameraMovement()
-    {
-        assertEquals(500, RooftopCameraPlugin.cameraDistance(300, 400, 0, 0, 0, 0));
-        assertEquals(1000, RooftopCameraPlugin.cameraDistance(600, 800, 0, 0, 0, 0));
-    }
 }

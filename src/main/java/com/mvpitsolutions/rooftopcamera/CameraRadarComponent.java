@@ -135,7 +135,7 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
     {
         g.setColor(TRACK);
         g.fillRoundRect(x, y, width, height, width, width);
-        int markerY = y + (height / 2) + scale(state.zoomDelta, 512, (height / 2) - 5);
+        int markerY = y + (height / 2) - scale(state.zoomDelta, 512, (height / 2) - 5);
         g.setColor(state.isZoomAligned() ? AQUA : GOLD);
         g.fillRoundRect(x - 3, markerY - 3, width + 6, 6, 6, 6);
         g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));

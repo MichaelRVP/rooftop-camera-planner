@@ -21,6 +21,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Tile;
 import net.runelite.api.TileObject;
+import net.runelite.api.VarClientInt;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
@@ -43,7 +44,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 @PluginDescriptor(name = "Rooftop Camera Planner", description = "Learns low-movement camera layouts for rooftop Agility", tags = {"agility", "rooftop", "camera", "optimizer"})
 public class RooftopCameraPlugin extends Plugin
 {
-    private static final String CALIBRATION_VERSION = "camera-distance-10-v2";
+    private static final String CALIBRATION_VERSION = "camera-varc-10-v3";
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
     @Inject private ConfigManager configManager;
@@ -158,7 +159,7 @@ public class RooftopCameraPlugin extends Plugin
     public void onClientTick(ClientTick event)
     {
         if (course != null && reachabilityTracker.observe(getSearchTarget(),
-            client.getCameraPitchTarget(), currentCameraDistance(), cameraBounds))
+            client.getCameraPitchTarget(), currentCameraZoom(), cameraBounds))
         {
             persistCameraBounds();
             activeSearchTarget = null;
@@ -175,7 +176,7 @@ public class RooftopCameraPlugin extends Plugin
             return;
         }
         lapOptimizer.sampleMouse(point.getX(), point.getY(), client.getCameraYawTarget(),
-            client.getCameraPitchTarget(), currentCameraDistance());
+            client.getCameraPitchTarget(), currentCameraZoom());
     }
 
     @Subscribe
@@ -189,7 +190,7 @@ public class RooftopCameraPlugin extends Plugin
             {
                 LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(course.indexOf(event.getId()),
                     point.getX(), point.getY(), client.getCameraYawTarget(),
-                    client.getCameraPitchTarget(), currentCameraDistance(),
+                    client.getCameraPitchTarget(), currentCameraZoom(),
                     clickboxFor(event.getId(), point.getX(), point.getY()));
                 if (lap != null && config.autoLearn())
                 {
@@ -232,7 +233,7 @@ public class RooftopCameraPlugin extends Plugin
     List<Rectangle> getScaledBestMarkers()
     {
         return !markersAvailable(searchPlanner.isComplete(searchHistory), bestMarkerLayout, bestTravelProfile,
-            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraDistance())
+            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom())
             ? Collections.emptyList()
             : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
     }
@@ -291,7 +292,7 @@ public class RooftopCameraPlugin extends Plugin
         {
             if (bestTravelProfile == null) return "Complete a lap to begin calibration";
             CameraTarget best = new CameraTarget(bestTravelProfile.yaw, bestTravelProfile.pitch, bestTravelProfile.zoom);
-            return cameraAligned(client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraDistance(),
+            return cameraAligned(client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom(),
                 bestTravelProfile) ? "Optimized camera locked - markers active" : directionsTo(best);
         }
         if (alignedTo(target))
@@ -314,14 +315,14 @@ public class RooftopCameraPlugin extends Plugin
         return new CameraGuidanceState(
             signedYawDelta(client.getCameraYawTarget(), target.yaw),
             target.pitch - client.getCameraPitchTarget(),
-            target.zoom - currentCameraDistance(), calibration, getValidCalibrationLaps());
+            target.zoom - currentCameraZoom(), calibration, getValidCalibrationLaps());
     }
 
     private boolean alignedTo(CameraTarget target)
     {
         int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
         int pitchDelta = target.pitch - client.getCameraPitchTarget();
-        int zoomDelta = target.zoom - currentCameraDistance();
+        int zoomDelta = target.zoom - currentCameraZoom();
         return Math.abs(yawDelta) <= 8 && Math.abs(pitchDelta) <= 4 && Math.abs(zoomDelta) <= 8;
     }
 
@@ -329,10 +330,10 @@ public class RooftopCameraPlugin extends Plugin
     {
         int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
         int pitchDelta = target.pitch - client.getCameraPitchTarget();
-        int zoomDelta = target.zoom - currentCameraDistance();
+        int zoomDelta = target.zoom - currentCameraZoom();
         String turn = Math.abs(yawDelta) <= 8 ? "hold yaw" : yawDelta > 0 ? "rotate right" : "rotate left";
         String tilt = Math.abs(pitchDelta) <= 4 ? "hold pitch" : pitchDelta > 0 ? "tilt up" : "tilt down";
-        String zoom = Math.abs(zoomDelta) <= 8 ? "hold zoom" : zoomDelta > 0 ? "zoom out" : "zoom in";
+        String zoom = Math.abs(zoomDelta) <= 8 ? "hold zoom" : zoomDelta > 0 ? "zoom in" : "zoom out";
         return turn + " | " + tilt + " | " + zoom;
     }
 
@@ -469,22 +470,12 @@ public class RooftopCameraPlugin extends Plugin
     private CameraTarget currentCameraTarget()
     {
         return new CameraTarget(CameraSearchPlanner.normalizeYaw(quantize(client.getCameraYawTarget(), 16)),
-            quantize(client.getCameraPitchTarget(), 8), quantize(currentCameraDistance(), 16));
+            quantize(client.getCameraPitchTarget(), 8), quantize(currentCameraZoom(), 16));
     }
 
-    private int currentCameraDistance()
+    private int currentCameraZoom()
     {
-        return cameraDistance(client.getCameraX(), client.getCameraY(), client.getCameraZ(),
-            client.getCameraFocalPointX(), client.getCameraFocalPointY(), client.getCameraFocalPointZ());
-    }
-
-    static int cameraDistance(int cameraX, int cameraY, int cameraZ,
-        float focalX, float focalY, float focalZ)
-    {
-        double dx = cameraX - focalX;
-        double dy = cameraY - focalY;
-        double dz = cameraZ - focalZ;
-        return (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
+        return client.getVarcIntValue(VarClientInt.CAMERA_ZOOM_RESIZABLE_VIEWPORT);
     }
 
     private void bootstrapLegacyProfile()

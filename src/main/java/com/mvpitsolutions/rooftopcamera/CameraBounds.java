@@ -9,7 +9,7 @@ final class CameraBounds
 
     CameraBounds()
     {
-        this(128, 2040, 128, 8192);
+        this(128, 2040, -400, 1004);
     }
 
     CameraBounds(int minPitch, int maxPitch, int minZoom, int maxZoom)
