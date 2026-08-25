@@ -4,7 +4,6 @@ import com.google.inject.Provides;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseWheelEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -36,13 +35,12 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.MouseListener;
 import net.runelite.client.input.MouseManager;
-import net.runelite.client.input.MouseWheelListener;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 @PluginDescriptor(name = "Rooftop Camera Planner", description = "Learns low-movement camera layouts for rooftop Agility", tags = {"agility", "rooftop", "camera", "optimizer"})
-public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseWheelListener
+public class RooftopCameraPlugin extends Plugin implements MouseListener
 {
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
@@ -80,7 +78,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
         overlayManager.add(sceneOverlay);
         overlayManager.add(ghostOverlay);
         mouseManager.registerMouseListener(this);
-        mouseManager.registerMouseWheelListener(this);
     }
 
     @Override
@@ -90,7 +87,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(ghostOverlay);
         mouseManager.unregisterMouseListener(this);
-        mouseManager.unregisterMouseWheelListener(this);
         reset();
     }
 
@@ -274,13 +270,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
     static int signedYawDelta(int current, int target)
     {
         return ((target - current + 1024) & 2047) - 1024;
-    }
-
-    @Override
-    public MouseWheelEvent mouseWheelMoved(MouseWheelEvent event)
-    {
-        reachabilityTracker.zoomInput();
-        return event;
     }
 
     @Override public MouseEvent mouseDragged(MouseEvent event)
