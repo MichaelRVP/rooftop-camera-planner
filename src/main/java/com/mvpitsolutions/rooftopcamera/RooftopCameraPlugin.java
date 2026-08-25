@@ -3,7 +3,6 @@ package com.mvpitsolutions.rooftopcamera;
 import com.google.inject.Provides;
 import java.awt.Rectangle;
 import java.awt.Shape;
-import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -33,19 +32,16 @@ import net.runelite.api.events.WallObjectDespawned;
 import net.runelite.api.events.WallObjectSpawned;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.input.MouseListener;
-import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
 @PluginDescriptor(name = "Rooftop Camera Planner", description = "Learns low-movement camera layouts for rooftop Agility", tags = {"agility", "rooftop", "camera", "optimizer"})
-public class RooftopCameraPlugin extends Plugin implements MouseListener
+public class RooftopCameraPlugin extends Plugin
 {
     private static final String CALIBRATION_VERSION = "bounded-10-v1";
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
-    @Inject private MouseManager mouseManager;
     @Inject private ConfigManager configManager;
     @Inject private RooftopCameraConfig config;
     @Inject private RooftopCameraOverlay cameraOverlay;
@@ -55,7 +51,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
     private final Map<TileObject, Integer> tracked = new ConcurrentHashMap<>();
     private final LapOptimizer lapOptimizer = new LapOptimizer();
     private final CameraSearchPlanner searchPlanner = new CameraSearchPlanner();
-    private final CameraReachabilityTracker reachabilityTracker = new CameraReachabilityTracker();
     private RooftopCourse course;
     private TravelProfile bestTravelProfile;
     private ScreenMarkerLayout bestMarkerLayout;
@@ -78,7 +73,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
         overlayManager.add(cameraOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(ghostOverlay);
-        mouseManager.registerMouseListener(this);
     }
 
     @Override
@@ -87,7 +81,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
         overlayManager.remove(cameraOverlay);
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(ghostOverlay);
-        mouseManager.unregisterMouseListener(this);
         reset();
     }
 
@@ -121,7 +114,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
             }
             cameraBounds = CameraBounds.parse(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, cameraBoundsKey()));
-            reachabilityTracker.reset();
             bootstrapLegacyProfile();
             applyBestCandidate();
             scanScene();
@@ -147,11 +139,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
     @Subscribe
     public void onClientTick(ClientTick event)
     {
-        if (reachabilityTracker.observe(getSearchTarget(), client.getCameraPitchTarget(),
-            client.get3dZoom(), cameraBounds))
-        {
-            persistCameraBounds();
-        }
         if (course == null || !lapOptimizer.isActive())
         {
             return;
@@ -316,19 +303,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
     {
         return ((target - current + 1024) & 2047) - 1024;
     }
-
-    @Override public MouseEvent mouseDragged(MouseEvent event)
-    {
-        reachabilityTracker.cameraDrag(client.getCameraYawTarget());
-        return event;
-    }
-
-    @Override public MouseEvent mouseClicked(MouseEvent event) { return event; }
-    @Override public MouseEvent mousePressed(MouseEvent event) { return event; }
-    @Override public MouseEvent mouseReleased(MouseEvent event) { return event; }
-    @Override public MouseEvent mouseEntered(MouseEvent event) { return event; }
-    @Override public MouseEvent mouseExited(MouseEvent event) { return event; }
-    @Override public MouseEvent mouseMoved(MouseEvent event) { return event; }
 
     private RooftopCourse detectCourse()
     {
@@ -521,7 +495,6 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
         lapOptimizer.reset(0);
         searchHistory = new SearchHistory();
         cameraBounds = new CameraBounds();
-        reachabilityTracker.reset();
         currentScore = 0;
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;
