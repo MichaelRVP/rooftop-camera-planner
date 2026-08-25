@@ -3,95 +3,94 @@ package com.mvpitsolutions.rooftopcamera;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class CameraSearchPlannerTest
 {
+    private final CameraSearchPlanner planner = new CameraSearchPlanner();
+    private final CameraBounds bounds = new CameraBounds();
+
     @Test
-    public void requiresBaselineBeforeExploration()
+    public void startsAtCurrentCameraThenUsesThreeWideViews()
     {
         SearchHistory history = new SearchHistory();
-        CameraTarget current = new CameraTarget(0, 1288, 512);
-        CameraTarget target = new CameraSearchPlanner().nextTarget(history, null, current, new CameraBounds());
-        assertEquals(current.key(), target.key());
+        CameraTarget current = new CameraTarget(100, 1288, 512);
+        assertEquals(current.key(), planner.nextTarget(history, null, current, bounds).key());
+
+        sample(history, 100, 1288, 512, 1);
+        assertEquals(new CameraTarget(783, 1288, 512).key(),
+            planner.nextTarget(history, history.best(), current, bounds).key());
+        sample(history, 783, 1288, 512, 2);
+        assertEquals(new CameraTarget(1465, 1288, 512).key(),
+            planner.nextTarget(history, history.best(), current, bounds).key());
     }
 
     @Test
-    public void beginsWithWideYawScoutAfterBaseline()
+    public void refinesAroundBestGlobalViewOnAllThreeAxes()
     {
-        SearchHistory history = new SearchHistory();
-        CameraCandidateStats baseline = history.getOrCreate(0, 1288, 512);
-        baseline.samples = 2;
-        baseline.overlapTotal = 2;
-        baseline.gapTotal = 2000;
-        baseline.centerTotal = 4000;
-        baseline.mouseTotal = 5000;
-
-        CameraTarget target = new CameraSearchPlanner().nextTarget(history, history.best(),
-            new CameraTarget(0, 1288, 512), new CameraBounds());
-        assertEquals(new CameraTarget(512, 1288, 512).key(), target.key());
-    }
-
-    @Test
-    public void finishesOnlyAfterAxisAndFineDiagonalNeighborsAreTested()
-    {
-        SearchHistory history = new SearchHistory();
-        CameraCandidateStats baseline = eligible(history, 0, 1288, 512);
-        seedWideScouts(history, 0, 1288, 512);
-        int[][] steps = {{256,128,128},{128,64,64},{64,32,32},{32,16,16},{16,8,16}};
-        for (int level = 0; level < steps.length; level++)
-        {
-            for (int y = -1; y <= 1; y++) for (int p = -1; p <= 1; p++) for (int z = -1; z <= 1; z++)
-            {
-                int changed = Math.abs(y) + Math.abs(p) + Math.abs(z);
-                if (changed == 0 || (level < steps.length - 1 && changed != 1)) continue;
-                eligible(history, CameraSearchPlanner.normalizeYaw(y * steps[level][0]),
-                    1288 + p * steps[level][1], 512 + z * steps[level][2]);
-            }
-        }
-        assertNull(new CameraSearchPlanner().nextTarget(history, baseline,
-            new CameraTarget(0, 1288, 512), new CameraBounds()));
-    }
-
-    @Test
-    public void skipsCameraTargetsOutsideLearnedBounds()
-    {
-        SearchHistory history = new SearchHistory();
-        CameraCandidateStats baseline = eligible(history, 0, 1288, 512);
-        CameraBounds bounds = new CameraBounds(1288, 2040, 512, 2048);
-        CameraTarget target = new CameraSearchPlanner().nextTarget(history, baseline,
+        SearchHistory history = seededGlobals();
+        CameraTarget target = planner.nextTarget(history, history.best(),
             new CameraTarget(0, 1288, 512), bounds);
-        assertEquals(new CameraTarget(512, 1288, 512).key(), target.key());
+        assertEquals(new CameraTarget(427, 1288, 512).key(), target.key());
+
+        sample(history, 427, 1288, 512, 1);
+        assertEquals(new CameraTarget(939, 1288, 512).key(),
+            planner.nextTarget(history, history.best(), target, bounds).key());
     }
 
     @Test
-    public void wideScoutsStayAnchoredToFirstBaselineWhenWinnerChanges()
+    public void tenthValidLapConfirmsWinnerAndCompletesCampaign()
+    {
+        SearchHistory history = seededGlobals();
+        int[][] local = {
+            {427,1288,512}, {939,1288,512}, {683,1160,512},
+            {683,1416,512}, {683,1288,384}, {683,1288,640}
+        };
+        for (int[] camera : local) sample(history, camera[0], camera[1], camera[2], 1);
+
+        assertEquals(9, history.totalSamples());
+        CameraTarget confirmation = planner.nextTarget(history, history.best(),
+            new CameraTarget(0, 1288, 512), bounds);
+        assertEquals(new CameraTarget(683, 1288, 512).key(), confirmation.key());
+        sample(history, confirmation.yaw, confirmation.pitch, confirmation.zoom, 3);
+        assertEquals(10, history.totalSamples());
+        assertNull(planner.nextTarget(history, history.best(), confirmation, bounds));
+        assertTrue(planner.isComplete(history));
+    }
+
+    @Test
+    public void mouseTravelNeverChangesTheWinner()
     {
         SearchHistory history = new SearchHistory();
-        eligible(history, 0, 1288, 512);
-        CameraCandidateStats winner = eligible(history, 512, 1288, 512);
-        winner.overlapTotal = 20;
-        CameraTarget target = new CameraSearchPlanner().nextTarget(history, history.best(),
-            new CameraTarget(512, 1288, 512), new CameraBounds());
-        assertEquals(new CameraTarget(768, 1288, 512).key(), target.key());
+        CameraCandidateStats first = sample(history, 0, 1288, 512, 2);
+        CameraCandidateStats second = sample(history, 100, 1288, 512, 2);
+        first.mouseTotal = 1_000_000;
+        second.mouseTotal = 1;
+        assertFalse(second.isBetterThan(first));
+        assertFalse(first.isBetterThan(second));
     }
 
-    private static void seedWideScouts(SearchHistory history, int yaw, int pitch, int zoom)
+    private static SearchHistory seededGlobals()
     {
-        for (int offset : new int[] {512, 768, 1024, 1280, 1536})
-        {
-            eligible(history, CameraSearchPlanner.normalizeYaw(yaw + offset), pitch, zoom);
-        }
+        SearchHistory history = new SearchHistory();
+        sample(history, 0, 1288, 512, 1);
+        sample(history, 683, 1288, 512, 3);
+        sample(history, 1365, 1288, 512, 2);
+        return history;
     }
 
-    private static CameraCandidateStats eligible(SearchHistory history, int yaw, int pitch, int zoom)
+    private static CameraCandidateStats sample(SearchHistory history, int yaw, int pitch, int zoom,
+        double overlap)
     {
         CameraCandidateStats candidate = history.getOrCreate(yaw, pitch, zoom);
-        candidate.samples = 2;
-        candidate.overlapTotal = 2;
-        candidate.gapTotal = 2000;
-        candidate.centerTotal = 4000;
-        candidate.mouseTotal = 5000;
+        candidate.samples++;
+        candidate.overlapTotal += overlap;
+        candidate.overlapAreaTotal += overlap * 100;
+        candidate.gapTotal += 1000;
+        candidate.centerTotal += 2000;
+        candidate.mouseTotal += 3000;
         return candidate;
     }
 }

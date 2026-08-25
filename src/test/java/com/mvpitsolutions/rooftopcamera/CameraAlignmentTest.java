@@ -1,5 +1,7 @@
 package com.mvpitsolutions.rooftopcamera;
 
+import java.awt.Rectangle;
+import java.util.Arrays;
 import org.junit.Test;
 
 import static org.junit.Assert.assertFalse;
@@ -22,5 +24,23 @@ public class CameraAlignmentTest
         assertFalse(RooftopCameraPlugin.cameraAligned(20, 1000, 500, PROFILE));
         assertFalse(RooftopCameraPlugin.cameraAligned(2044, 1005, 500, PROFILE));
         assertFalse(RooftopCameraPlugin.cameraAligned(2044, 1000, 509, PROFILE));
+    }
+
+    @Test
+    public void requestedCalibrationTargetUsesTheSameStrictTolerance()
+    {
+        CameraTarget target = new CameraTarget(2044, 1000, 500);
+        assertTrue(RooftopCameraPlugin.cameraAligned(2, 1004, 508, target));
+        assertFalse(RooftopCameraPlugin.cameraAligned(20, 1000, 500, target));
+    }
+
+    @Test
+    public void markersAppearOnlyAfterCampaignAndAtWinningCamera()
+    {
+        ScreenMarkerLayout layout = new ScreenMarkerLayout(800, 600,
+            Arrays.asList(new Rectangle(1, 2, 3, 4)));
+        assertFalse(RooftopCameraPlugin.markersAvailable(false, layout, PROFILE, 2044, 1000, 500));
+        assertFalse(RooftopCameraPlugin.markersAvailable(true, layout, PROFILE, 20, 1000, 500));
+        assertTrue(RooftopCameraPlugin.markersAvailable(true, layout, PROFILE, 2044, 1000, 500));
     }
 }

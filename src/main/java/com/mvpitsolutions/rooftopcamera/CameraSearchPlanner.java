@@ -5,69 +5,89 @@ import java.util.List;
 
 final class CameraSearchPlanner
 {
-    // Deliberately distant probes prevent the fine search from settling around a poor starting yaw.
-    private static final int[] WIDE_YAW_OFFSETS = {512, 768, 1024, 1280, 1536};
-    private static final int[][] STEPS = {
-        {256, 128, 128}, {128, 64, 64}, {64, 32, 32}, {32, 16, 16}, {16, 8, 16}
-    };
+    static final int MAX_VALID_LAPS = 10;
+    private static final int[] GLOBAL_YAW_OFFSETS = {0, 683, 1365};
 
-    CameraTarget nextTarget(SearchHistory history, CameraCandidateStats best, CameraTarget current,
-        CameraBounds bounds)
+    CameraTarget nextTarget(SearchHistory history, CameraCandidateStats ignoredBest,
+        CameraTarget current, CameraBounds bounds)
     {
-        CameraTarget center = best == null ? current : new CameraTarget(best.yaw, best.pitch, best.zoom);
-        if (best == null)
+        CameraCandidateStats anchor = history.first();
+        if (anchor == null)
         {
-            CameraCandidateStats baseline = history.get(center);
-            return baseline == null || baseline.samples < 2 ? center : null;
+            return current;
         }
 
-        CameraCandidateStats anchor = history.firstEligible();
-        if (anchor != null)
+        List<CameraTarget> globalTargets = globalTargets(anchor, bounds);
+        for (CameraTarget target : globalTargets)
         {
-            for (int offset : WIDE_YAW_OFFSETS)
-            {
-                CameraTarget target = new CameraTarget(normalizeYaw(anchor.yaw + offset),
-                    bounds.clampPitch(anchor.pitch), bounds.clampZoom(anchor.zoom));
-                CameraCandidateStats candidate = history.get(target);
-                if (candidate == null || candidate.samples < 2) return target;
-            }
+            if (needsLap(history, target)) return target;
         }
 
-        for (int level = 0; level < STEPS.length; level++)
+        CameraCandidateStats globalBest = bestOf(history, globalTargets);
+        CameraTarget center = new CameraTarget(globalBest.yaw, globalBest.pitch, globalBest.zoom);
+        for (CameraTarget target : localTargets(center, bounds))
         {
-            for (CameraTarget target : neighbors(center, STEPS[level], level == STEPS.length - 1, bounds))
-            {
-                if (target.key().equals(center.key())) continue;
-                CameraCandidateStats candidate = history.get(target);
-                if (candidate == null || candidate.samples < 2) return target;
-            }
+            if (needsLap(history, target)) return target;
+        }
+
+        if (history.totalSamples() < MAX_VALID_LAPS)
+        {
+            CameraCandidateStats winner = history.best();
+            return new CameraTarget(winner.yaw, winner.pitch, winner.zoom);
         }
         return null;
     }
 
-    private static List<CameraTarget> neighbors(CameraTarget center, int[] step, boolean includeDiagonals,
-        CameraBounds bounds)
+    boolean isComplete(SearchHistory history)
+    {
+        return history.totalSamples() >= MAX_VALID_LAPS;
+    }
+
+    private static boolean needsLap(SearchHistory history, CameraTarget target)
+    {
+        CameraCandidateStats candidate = history.get(target);
+        return candidate == null || candidate.samples == 0;
+    }
+
+    private static List<CameraTarget> globalTargets(CameraCandidateStats anchor, CameraBounds bounds)
     {
         List<CameraTarget> targets = new ArrayList<>();
-        for (int y = -1; y <= 1; y++)
+        for (int offset : GLOBAL_YAW_OFFSETS)
         {
-            for (int p = -1; p <= 1; p++)
-            {
-                for (int z = -1; z <= 1; z++)
-                {
-                    int changed = Math.abs(y) + Math.abs(p) + Math.abs(z);
-                    if (changed == 0 || (!includeDiagonals && changed != 1)) continue;
-                    CameraTarget target = new CameraTarget(normalizeYaw(center.yaw + y * step[0]),
-                        bounds.clampPitch(center.pitch + p * step[1]),
-                        bounds.clampZoom(center.zoom + z * step[2]));
-                    if (targets.stream().noneMatch(existing -> existing.key().equals(target.key())))
-                    {
-                        targets.add(target);
-                    }
-                }
-            }
+            addUnique(targets, new CameraTarget(normalizeYaw(anchor.yaw + offset),
+                offset == 0 ? anchor.pitch : bounds.clampPitch(anchor.pitch),
+                offset == 0 ? anchor.zoom : bounds.clampZoom(anchor.zoom)));
         }
         return targets;
+    }
+
+    private static List<CameraTarget> localTargets(CameraTarget center, CameraBounds bounds)
+    {
+        List<CameraTarget> targets = new ArrayList<>();
+        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw - 256), center.pitch, center.zoom));
+        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw + 256), center.pitch, center.zoom));
+        addUnique(targets, new CameraTarget(center.yaw, bounds.clampPitch(center.pitch - 128), center.zoom));
+        addUnique(targets, new CameraTarget(center.yaw, bounds.clampPitch(center.pitch + 128), center.zoom));
+        addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom - 128)));
+        addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom + 128)));
+        targets.removeIf(target -> target.key().equals(center.key()));
+        return targets;
+    }
+
+    private static CameraCandidateStats bestOf(SearchHistory history, List<CameraTarget> targets)
+    {
+        CameraCandidateStats best = null;
+        for (CameraTarget target : targets)
+        {
+            CameraCandidateStats candidate = history.get(target);
+            if (candidate != null && candidate.isEligible() && candidate.isBetterThan(best)) best = candidate;
+        }
+        return best;
+    }
+
+    private static void addUnique(List<CameraTarget> targets, CameraTarget target)
+    {
+        if (targets.stream().noneMatch(existing -> existing.key().equals(target.key()))) targets.add(target);
     }
 
     static int normalizeYaw(int yaw) { return ((yaw % 2048) + 2048) % 2048; }

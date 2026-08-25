@@ -42,6 +42,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 @PluginDescriptor(name = "Rooftop Camera Planner", description = "Learns low-movement camera layouts for rooftop Agility", tags = {"agility", "rooftop", "camera", "optimizer"})
 public class RooftopCameraPlugin extends Plugin implements MouseListener
 {
+    private static final String CALIBRATION_VERSION = "bounded-10-v1";
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
     @Inject private MouseManager mouseManager;
@@ -106,6 +107,18 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course)));
             searchHistory = course == null ? new SearchHistory() : SearchHistory.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course)));
+            if (course != null && !CALIBRATION_VERSION.equals(configManager.getConfiguration(
+                RooftopCameraConfig.GROUP, calibrationVersionKey(course))))
+            {
+                bestTravelProfile = null;
+                bestMarkerLayout = null;
+                searchHistory = new SearchHistory();
+                configManager.setConfiguration(RooftopCameraConfig.GROUP, travelProfileKey(course), "");
+                configManager.setConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course), "");
+                configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course), "");
+                configManager.setConfiguration(RooftopCameraConfig.GROUP,
+                    calibrationVersionKey(course), CALIBRATION_VERSION);
+            }
             cameraBounds = CameraBounds.parse(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, cameraBoundsKey()));
             reachabilityTracker.reset();
@@ -207,11 +220,17 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
     int getTrackedObstacleCount() { return tracked.size(); }
     List<Rectangle> getScaledBestMarkers()
     {
-        return bestMarkerLayout == null || !bestMarkerLayout.verifiedInnerRectangles
-            || bestTravelProfile == null || !cameraAligned(
-            client.getCameraYawTarget(), client.getCameraPitchTarget(), client.get3dZoom(), bestTravelProfile)
+        return !markersAvailable(searchPlanner.isComplete(searchHistory), bestMarkerLayout, bestTravelProfile,
+            client.getCameraYawTarget(), client.getCameraPitchTarget(), client.get3dZoom())
             ? Collections.emptyList()
             : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
+    }
+
+    static boolean markersAvailable(boolean calibrationComplete, ScreenMarkerLayout layout,
+        TravelProfile profile, int yaw, int pitch, int zoom)
+    {
+        return calibrationComplete && layout != null && layout.verifiedInnerRectangles
+            && cameraAligned(yaw, pitch, zoom, profile);
     }
 
     static boolean cameraAligned(int yaw, int pitch, int zoom, TravelProfile profile)
@@ -221,7 +240,16 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
             && Math.abs(pitch - profile.pitch) <= 4
             && Math.abs(zoom - profile.zoom) <= 8;
     }
+
+    static boolean cameraAligned(int yaw, int pitch, int zoom, CameraTarget target)
+    {
+        return target != null
+            && Math.abs(signedYawDelta(yaw, target.yaw)) <= 8
+            && Math.abs(pitch - target.pitch) <= 4
+            && Math.abs(zoom - target.zoom) <= 8;
+    }
     int getTestedCameraCount() { return searchHistory.testedCount(); }
+    int getValidCalibrationLaps() { return Math.min(searchHistory.totalSamples(), CameraSearchPlanner.MAX_VALID_LAPS); }
     CameraTarget getSearchTarget()
     {
         if (course == null) return null;
@@ -245,15 +273,32 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
         CameraTarget target = getSearchTarget();
         if (target == null)
         {
-            return "Local camera neighborhood verified";
+            if (bestTravelProfile == null) return "Complete a lap to begin calibration";
+            CameraTarget best = new CameraTarget(bestTravelProfile.yaw, bestTravelProfile.pitch, bestTravelProfile.zoom);
+            return cameraAligned(client.getCameraYawTarget(), client.getCameraPitchTarget(), client.get3dZoom(),
+                bestTravelProfile) ? "Optimized camera locked - markers active" : directionsTo(best);
         }
+        if (alignedTo(target))
+        {
+            return "Calibration lap " + (getValidCalibrationLaps() + 1) + " / "
+                + CameraSearchPlanner.MAX_VALID_LAPS + " - hold camera";
+        }
+        return directionsTo(target);
+    }
+
+    private boolean alignedTo(CameraTarget target)
+    {
         int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
         int pitchDelta = target.pitch - client.getCameraPitchTarget();
         int zoomDelta = target.zoom - client.get3dZoom();
-        if (Math.abs(yawDelta) <= 8 && Math.abs(pitchDelta) <= 4 && Math.abs(zoomDelta) <= 8)
-        {
-            return "Target locked - hold camera for the full lap";
-        }
+        return Math.abs(yawDelta) <= 8 && Math.abs(pitchDelta) <= 4 && Math.abs(zoomDelta) <= 8;
+    }
+
+    private String directionsTo(CameraTarget target)
+    {
+        int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
+        int pitchDelta = target.pitch - client.getCameraPitchTarget();
+        int zoomDelta = target.zoom - client.get3dZoom();
         String turn = Math.abs(yawDelta) <= 8 ? "hold yaw" : yawDelta > 0 ? "rotate right" : "rotate left";
         String tilt = Math.abs(pitchDelta) <= 4 ? "hold pitch" : pitchDelta > 0 ? "tilt up" : "tilt down";
         String zoom = Math.abs(zoomDelta) <= 8 ? "hold zoom" : zoomDelta > 0 ? "zoom in" : "zoom out";
@@ -382,7 +427,9 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
 
     private void learnFrom(LapOptimizer.CompletedLap lap)
     {
-        if (!lap.stableCamera || Double.isNaN(lap.markerTravel))
+        CameraTarget requested = getSearchTarget();
+        if (!lap.stableCamera || Double.isNaN(lap.markerTravel) || requested == null
+            || !cameraAligned(lap.yaw, lap.pitch, lap.zoom, requested))
         {
             return;
         }
@@ -448,6 +495,11 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener
     private static String searchHistoryKey(RooftopCourse course)
     {
         return "searchHistory." + course.name().toLowerCase();
+    }
+
+    private static String calibrationVersionKey(RooftopCourse course)
+    {
+        return "calibrationVersion." + course.name().toLowerCase();
     }
 
     private static String cameraBoundsKey()

@@ -21,6 +21,12 @@ final class SearchHistory
 
     Collection<CameraCandidateStats> all() { return candidates.values(); }
 
+    CameraCandidateStats first()
+    {
+        for (CameraCandidateStats candidate : candidates.values()) return candidate;
+        return null;
+    }
+
     CameraCandidateStats firstEligible()
     {
         for (CameraCandidateStats candidate : candidates.values())
@@ -44,6 +50,13 @@ final class SearchHistory
     {
         int count = 0;
         for (CameraCandidateStats candidate : candidates.values()) if (candidate.isEligible()) count++;
+        return count;
+    }
+
+    int totalSamples()
+    {
+        int count = 0;
+        for (CameraCandidateStats candidate : candidates.values()) count += candidate.samples;
         return count;
     }
 

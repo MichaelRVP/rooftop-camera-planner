@@ -50,8 +50,8 @@ final class RooftopCameraOverlay extends OverlayPanel
         panelComponent.getChildren().add(LineComponent.builder().left(plugin.cameraGuidance())
             .leftColor(new Color(74, 220, 200)).build());
         LapOptimizer optimizer = plugin.getLapOptimizer();
-        panelComponent.getChildren().add(LineComponent.builder().left("Views compared").right(
-            Integer.toString(plugin.getTestedCameraCount())).build());
+        panelComponent.getChildren().add(LineComponent.builder().left("Calibration").right(
+            plugin.getValidCalibrationLaps() + " / " + CameraSearchPlanner.MAX_VALID_LAPS + " valid laps").build());
         CameraTarget target = plugin.getSearchTarget();
         if (target != null)
         {
@@ -60,7 +60,7 @@ final class RooftopCameraOverlay extends OverlayPanel
                 panelComponent.getChildren().add(LineComponent.builder().left("Search target").right(
                     plugin.nextExperiment()).build());
                 panelComponent.getChildren().add(LineComponent.builder().left("Target evidence").right(
-                    plugin.getSearchTargetSamples() + " / 2 laps").build());
+                    plugin.getSearchTargetSamples() + " valid laps").build());
             }
         }
         panelComponent.getChildren().add(LineComponent.builder().left("Lap progress").right(
@@ -108,7 +108,7 @@ final class RooftopCameraOverlay extends OverlayPanel
             if (target == null)
             {
                 panelComponent.getChildren().add(LineComponent.builder().left("Search status").right(
-                    "Neighborhood verified").leftColor(new Color(74, 220, 200)).build());
+                    "Complete - markers ready").leftColor(new Color(74, 220, 200)).build());
             }
         }
         else if (plugin.getTrackedObstacleCount() == 0)

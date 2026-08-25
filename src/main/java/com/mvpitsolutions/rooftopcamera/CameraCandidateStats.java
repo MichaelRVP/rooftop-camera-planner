@@ -43,7 +43,7 @@ final class CameraCandidateStats
     double averageGap() { return samples == 0 ? Double.POSITIVE_INFINITY : gapTotal / samples; }
     double averageCenter() { return samples == 0 ? Double.POSITIVE_INFINITY : centerTotal / samples; }
     double averageMouse() { return samples == 0 ? Double.POSITIVE_INFINITY : mouseTotal / samples; }
-    boolean isEligible() { return samples >= 2; }
+    boolean isEligible() { return samples >= 1; }
 
     boolean isBetterThan(CameraCandidateStats other)
     {
@@ -56,6 +56,6 @@ final class CameraCandidateStats
         if (gap != 0) return gap < 0;
         int center = Double.compare(averageCenter(), other.averageCenter());
         if (center != 0) return center < 0;
-        return averageMouse() < other.averageMouse();
+        return false;
     }
 }

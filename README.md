@@ -12,9 +12,9 @@ layout for all nine OSRS rooftop Agility courses.
 - Scores the cyclic route by maximizing consecutive clickbox overlaps, shared
   overlap area, then minimizing the remaining gaps and cursor travel.
 - Persists every tested yaw, pitch, and zoom candidate for each course.
-- Runs a bounded global yaw scout before a coarse-to-fine neighborhood search,
-  requiring two complete laps per candidate and testing diagonal interactions
-  at the final resolution.
+- Finishes calibration in at most ten valid laps: three widely separated yaw
+  views, six yaw/pitch/zoom probes around the strongest view, and one confirming
+  lap at the winner.
 - Learns the active client's reachable pitch and zoom limits when repeated
   adjustment input produces no movement, then replans without user setup.
 - Draws the best learned clickboxes as static ghost markers only while the
@@ -37,9 +37,9 @@ Close normal RuneLite and run:
 .\gradlew.bat run
 ```
 
-Enable `Rooftop Camera Planner`, enter a rooftop course, and hold the camera
-still for two complete laps. A lap includes the final obstacle through the
-first obstacle of the next lap. Follow the exact search target and directional
-guidance for two laps at a time. Results survive restarts, and the plugin only
-reports the local neighborhood as verified after every planned candidate has
-enough evidence.
+Enable `Rooftop Camera Planner`, enter a rooftop course, and follow the camera
+guidance for each valid lap. The final obstacle ends the current lap immediately,
+so the next camera instruction appears before obstacle one. Falls, skipped
+obstacles, missing click geometry, incidental actions, and camera movement do
+not consume calibration laps. Results survive restarts; once ten valid laps are
+complete, align with the winning camera and the saved click markers appear.

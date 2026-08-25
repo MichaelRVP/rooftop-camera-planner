@@ -98,7 +98,7 @@ final class LapOptimizer
     {
         if (index == 0)
         {
-            if (active && expectedIndex == routeSize)
+            if (active && routeSize == 1)
             {
                 sampleMouse(mouseX, mouseY, yaw, pitch, zoom);
                 CompletedLap completed = finishLap();
@@ -122,7 +122,7 @@ final class LapOptimizer
         markers[index] = copy(clickbox);
         lastObstacleIndex = index;
         expectedIndex++;
-        return null;
+        return expectedIndex == routeSize ? finishLap() : null;
     }
 
     boolean isActive() { return active; }
