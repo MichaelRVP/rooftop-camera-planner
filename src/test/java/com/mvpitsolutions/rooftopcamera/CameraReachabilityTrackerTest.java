@@ -17,10 +17,10 @@ public class CameraReachabilityTrackerTest
         tracker.observe(target, 1288, 512, bounds);
         for (int i = 0; i < 4; i++)
         {
-            tracker.zoomInput();
+            tracker.zoomInput(1);
             assertFalse(tracker.observe(target, 1288, 512, bounds));
         }
-        tracker.zoomInput();
+        tracker.zoomInput(1);
         assertTrue(tracker.observe(target, 1288, 512, bounds));
         assertEquals(512, bounds.clampZoom(384));
     }
@@ -34,13 +34,28 @@ public class CameraReachabilityTrackerTest
         tracker.observe(target, 1288, 512, bounds);
         for (int i = 0; i < 4; i++)
         {
-            tracker.zoomInput();
+            tracker.zoomInput(1);
             tracker.observe(target, 1288, 512, bounds);
         }
-        tracker.zoomInput();
+        tracker.zoomInput(1);
         tracker.observe(target, 1288, 496, bounds);
-        tracker.zoomInput();
+        tracker.zoomInput(1);
         assertFalse(tracker.observe(target, 1288, 496, bounds));
+        assertEquals(384, bounds.clampZoom(384));
+    }
+
+    @Test
+    public void ignoresWheelInputMovingAwayFromRequestedZoom()
+    {
+        CameraBounds bounds = new CameraBounds();
+        CameraReachabilityTracker tracker = new CameraReachabilityTracker();
+        CameraTarget target = new CameraTarget(0, 1288, 384);
+        tracker.observe(target, 1288, 512, bounds);
+        for (int i = 0; i < 8; i++)
+        {
+            tracker.zoomInput(-1);
+            assertFalse(tracker.observe(target, 1288, 512, bounds));
+        }
         assertEquals(384, bounds.clampZoom(384));
     }
 

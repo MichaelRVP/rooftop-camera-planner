@@ -77,6 +77,23 @@ public class CameraSearchPlannerTest
     }
 
     @Test
+    public void learnedZoomBoundaryRemovesImpossibleExperiment()
+    {
+        SearchHistory history = seededGlobals();
+        sample(history, 432, 1288, 512, 1);
+        sample(history, 944, 1288, 512, 1);
+        sample(history, 688, 1160, 512, 1);
+        sample(history, 688, 1416, 512, 1);
+        CameraBounds restricted = new CameraBounds();
+        assertTrue(restricted.learnZoomLimit(384, 512));
+
+        CameraTarget next = planner.nextTarget(history, history.best(),
+            new CameraTarget(688, 1288, 512), restricted);
+
+        assertEquals(new CameraTarget(688, 1288, 640).key(), next.key());
+    }
+
+    @Test
     public void mouseTravelNeverChangesTheWinner()
     {
         SearchHistory history = new SearchHistory();

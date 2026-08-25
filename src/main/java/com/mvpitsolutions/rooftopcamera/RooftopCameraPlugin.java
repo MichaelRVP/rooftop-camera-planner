@@ -44,7 +44,6 @@ import net.runelite.client.ui.overlay.OverlayManager;
 public class RooftopCameraPlugin extends Plugin
 {
     private static final String CALIBRATION_VERSION = "bounded-10-v1";
-    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(RooftopCameraPlugin.class);
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
     @Inject private ConfigManager configManager;
@@ -56,6 +55,7 @@ public class RooftopCameraPlugin extends Plugin
     private final Map<TileObject, Integer> tracked = new ConcurrentHashMap<>();
     private final LapOptimizer lapOptimizer = new LapOptimizer();
     private final CameraSearchPlanner searchPlanner = new CameraSearchPlanner();
+    private final CameraReachabilityTracker reachabilityTracker = new CameraReachabilityTracker();
     private RooftopCourse course;
     private TravelProfile bestTravelProfile;
     private ScreenMarkerLayout bestMarkerLayout;
@@ -65,13 +65,12 @@ public class RooftopCameraPlugin extends Plugin
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
     private int ticksSinceScan;
-    private final AWTEventListener zoomDiagnostic = event ->
+    private final AWTEventListener zoomObserver = event ->
     {
-        if (event instanceof MouseWheelEvent)
+        if (event instanceof MouseWheelEvent && course != null)
         {
             MouseWheelEvent wheel = (MouseWheelEvent) event;
-            LOG.warn("ROOFTOP_ZOOM_PROBE rotation={} consumed={} varc74={} renderedZoom={}",
-                wheel.getWheelRotation(), wheel.isConsumed(), client.getVarcIntValue(74), client.get3dZoom());
+            reachabilityTracker.zoomInput(wheel.getWheelRotation());
         }
     };
 
@@ -87,7 +86,7 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.add(cameraOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(ghostOverlay);
-        Toolkit.getDefaultToolkit().addAWTEventListener(zoomDiagnostic, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
+        Toolkit.getDefaultToolkit().addAWTEventListener(zoomObserver, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
     }
 
     @Override
@@ -96,7 +95,7 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.remove(cameraOverlay);
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(ghostOverlay);
-        Toolkit.getDefaultToolkit().removeAWTEventListener(zoomDiagnostic);
+        Toolkit.getDefaultToolkit().removeAWTEventListener(zoomObserver);
         reset();
     }
 
@@ -130,6 +129,7 @@ public class RooftopCameraPlugin extends Plugin
             }
             cameraBounds = CameraBounds.parse(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, cameraBoundsKey()));
+            reachabilityTracker.reset();
             bootstrapLegacyProfile();
             applyBestCandidate();
             scanScene();
@@ -155,6 +155,11 @@ public class RooftopCameraPlugin extends Plugin
     @Subscribe
     public void onClientTick(ClientTick event)
     {
+        if (course != null && reachabilityTracker.observe(getSearchTarget(),
+            client.getCameraPitchTarget(), client.get3dZoom(), cameraBounds))
+        {
+            persistCameraBounds();
+        }
         if (course == null || !lapOptimizer.isActive())
         {
             return;

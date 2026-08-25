@@ -11,7 +11,7 @@ final class CameraReachabilityTracker
     private boolean pitchInputPending;
     private boolean zoomInputPending;
 
-    boolean observe(CameraTarget newTarget, int pitch, int zoom, CameraBounds bounds)
+    synchronized boolean observe(CameraTarget newTarget, int pitch, int zoom, CameraBounds bounds)
     {
         boolean changed = false;
         if (newTarget == null || target == null || !newTarget.key().equals(target.key()))
@@ -49,7 +49,7 @@ final class CameraReachabilityTracker
         return changed;
     }
 
-    void cameraDrag(int yaw)
+    synchronized void cameraDrag(int yaw)
     {
         if (target == null || Math.abs(RooftopCameraPlugin.signedYawDelta(yaw, target.yaw)) > 8
             || Math.abs(target.pitch - lastPitch) <= 4)
@@ -60,17 +60,22 @@ final class CameraReachabilityTracker
         pitchInputPending = true;
     }
 
-    void zoomInput()
+    synchronized void zoomInput(int wheelRotation)
     {
         if (target == null || Math.abs(target.zoom - lastZoom) <= 8)
         {
             unchangedZoomInputs = 0;
             return;
         }
+        boolean towardTarget = target.zoom < lastZoom ? wheelRotation > 0 : wheelRotation < 0;
+        if (!towardTarget)
+        {
+            return;
+        }
         zoomInputPending = true;
     }
 
-    void reset()
+    synchronized void reset()
     {
         target = null;
         unchangedPitchInputs = 0;
