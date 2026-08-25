@@ -50,7 +50,7 @@ final class RooftopCameraOverlay extends OverlayPanel
             LapOptimizer optimizer = plugin.getLapOptimizer();
             radar.setRouteState(course.displayName, next, optimizer.getProgress(),
                 course.obstacles.length, optimizer.isCurrentLapStableSoFar());
-            radar.setHistoryState(profile, optimizer.getLastTravel());
+            radar.setHistoryState(profile, optimizer.getLastTravel(), plugin.getTestedCameraCount());
             panelComponent.getChildren().add(radar);
         }
         else

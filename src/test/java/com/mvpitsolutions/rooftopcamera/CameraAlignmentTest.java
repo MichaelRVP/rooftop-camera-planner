@@ -5,6 +5,7 @@ import java.util.Arrays;
 import org.junit.Test;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class CameraAlignmentTest
@@ -42,5 +43,12 @@ public class CameraAlignmentTest
         assertFalse(RooftopCameraPlugin.markersAvailable(false, layout, PROFILE, 2044, 1000, 500));
         assertFalse(RooftopCameraPlugin.markersAvailable(true, layout, PROFILE, 20, 1000, 500));
         assertTrue(RooftopCameraPlugin.markersAvailable(true, layout, PROFILE, 2044, 1000, 500));
+    }
+
+    @Test
+    public void completedSearchKeepsWinnerAsAlignmentTarget()
+    {
+        CameraTarget target = RooftopCameraPlugin.effectiveAlignmentTarget(null, PROFILE);
+        assertEquals(new CameraTarget(PROFILE.yaw, PROFILE.pitch, PROFILE.zoom).key(), target.key());
     }
 }

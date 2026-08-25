@@ -2,6 +2,7 @@ package com.mvpitsolutions.rooftopcamera;
 
 import java.awt.Rectangle;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.junit.Test;
 
@@ -29,5 +30,20 @@ public class ScreenMarkerLayoutTest
         ScreenMarkerLayout parsed = ScreenMarkerLayout.parse("800,600|1:2:3:4");
         org.junit.Assert.assertFalse(parsed.verifiedInnerRectangles);
         assertEquals(new Rectangle(1, 2, 3, 4), parsed.markers.get(0));
+    }
+
+    @Test
+    public void liveClickboxReplacesOnlyItsStaleSavedMarker()
+    {
+        List<Rectangle> saved = Arrays.asList(
+            new Rectangle(10, 10, 20, 20), new Rectangle(40, 40, 20, 20));
+        Rectangle live = new Rectangle(14, 18, 28, 24);
+
+        List<Rectangle> merged = RooftopCameraPlugin.mergeLiveMarkers(saved,
+            Collections.singletonMap(0, live));
+
+        assertEquals(live, merged.get(0));
+        assertEquals(saved.get(1), merged.get(1));
+        assertEquals(new Rectangle(10, 10, 20, 20), saved.get(0));
     }
 }

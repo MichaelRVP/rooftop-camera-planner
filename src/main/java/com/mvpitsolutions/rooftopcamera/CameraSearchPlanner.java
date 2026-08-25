@@ -5,7 +5,7 @@ import java.util.List;
 
 final class CameraSearchPlanner
 {
-    static final int MAX_VALID_LAPS = 10;
+    static final int MAX_VALID_LAPS = 16;
     private static final int[] GLOBAL_YAW_OFFSETS = {0, 683, 1365};
 
     CameraTarget nextTarget(SearchHistory history, CameraCandidateStats ignoredBest,
@@ -30,6 +30,17 @@ final class CameraSearchPlanner
         for (CameraTarget target : localTargets(center, bounds))
         {
             if (needsLap(history, target)) return target;
+        }
+
+        CameraCandidateStats measuredBest = history.best();
+        if (measuredBest != null)
+        {
+            CameraTarget measuredCenter = new CameraTarget(
+                measuredBest.yaw, measuredBest.pitch, measuredBest.zoom);
+            for (CameraTarget target : precisionTargets(measuredCenter, bounds))
+            {
+                if (needsLap(history, target)) return target;
+            }
         }
 
         if (history.totalSamples() < MAX_VALID_LAPS)
@@ -72,6 +83,21 @@ final class CameraSearchPlanner
         addUnique(targets, new CameraTarget(center.yaw, bounds.clampPitch(center.pitch + 128), center.zoom));
         addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom - 128)));
         addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom + 128)));
+        targets.removeIf(target -> target.key().equals(center.key()));
+        return targets;
+    }
+
+    private static List<CameraTarget> precisionTargets(CameraTarget center, CameraBounds bounds)
+    {
+        List<CameraTarget> targets = new ArrayList<>();
+        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw - 128), center.pitch, center.zoom));
+        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw + 128), center.pitch, center.zoom));
+        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw - 64), center.pitch, center.zoom));
+        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw + 64), center.pitch, center.zoom));
+        addUnique(targets, new CameraTarget(center.yaw, bounds.clampPitch(center.pitch - 64), center.zoom));
+        addUnique(targets, new CameraTarget(center.yaw, bounds.clampPitch(center.pitch + 64), center.zoom));
+        addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom - 64)));
+        addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom + 64)));
         targets.removeIf(target -> target.key().equals(center.key()));
         return targets;
     }

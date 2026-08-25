@@ -72,7 +72,7 @@ public class CameraSearchPlannerTest
     }
 
     @Test
-    public void tenthValidLapConfirmsWinnerAndCompletesCampaign()
+    public void precisionStageContinuesPastTenLapsAndThenCompletesCampaign()
     {
         SearchHistory history = seededGlobals();
         int[][] local = {
@@ -82,12 +82,24 @@ public class CameraSearchPlannerTest
         for (int[] camera : local) sample(history, camera[0], camera[1], camera[2], 1);
 
         assertEquals(9, history.totalSamples());
-        CameraTarget confirmation = planner.nextTarget(history, history.best(),
+        CameraTarget precision = planner.nextTarget(history, history.best(),
             new CameraTarget(0, 1288, 512), bounds);
-        assertEquals(new CameraTarget(688, 1288, 512).key(), confirmation.key());
-        sample(history, confirmation.yaw, confirmation.pitch, confirmation.zoom, 3);
+        assertEquals(new CameraTarget(560, 1288, 512).key(), precision.key());
+        sample(history, precision.yaw, precision.pitch, precision.zoom, 3);
         assertEquals(10, history.totalSamples());
-        assertNull(planner.nextTarget(history, history.best(), confirmation, bounds));
+        assertFalse(planner.isComplete(history));
+
+        CameraTarget current = precision;
+        for (int guard = 0; guard < 30; guard++)
+        {
+            CameraTarget next = planner.nextTarget(history, history.best(), current, bounds);
+            if (next == null) break;
+            sample(history, next.yaw, next.pitch, next.zoom, 3);
+            current = next;
+        }
+
+        assertTrue(history.totalSamples() >= CameraSearchPlanner.MAX_VALID_LAPS);
+        assertNull(planner.nextTarget(history, history.best(), current, bounds));
         assertTrue(planner.isComplete(history));
     }
 

@@ -32,6 +32,7 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
     private double bestOverlap = Double.NaN;
     private double bestGap = Double.NaN;
     private int evidenceLaps;
+    private int testedViews;
     private double lastTravel = Double.NaN;
 
     void setState(CameraGuidanceState state)
@@ -51,9 +52,15 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
 
     void setHistoryState(TravelProfile profile, double lastTravel)
     {
+        setHistoryState(profile, lastTravel, profile == null ? 0 : 1);
+    }
+
+    void setHistoryState(TravelProfile profile, double lastTravel, int testedViews)
+    {
         bestOverlap = profile == null ? Double.NaN : profile.overlappingTransitions;
         bestGap = profile == null ? Double.NaN : profile.markerGap;
         evidenceLaps = profile == null ? 0 : profile.samples;
+        this.testedViews = testedViews;
         this.lastTravel = lastTravel;
     }
 
@@ -199,11 +206,11 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
     {
         g.setColor(SURFACE_EDGE);
         g.drawLine(x, y, x + width, y);
-        String[] labels = {"BEST OVERLAP", "MARKER GAP", "EVIDENCE", "LAST LAP"};
+        String[] labels = {"BEST OBSERVED", "MARKER GAP", "TESTED VIEWS", "LAST LAP"};
         String[] values = {
             Double.isNaN(bestOverlap) ? "--" : String.format("%.1f / %d", bestOverlap, routeTotal),
             Double.isNaN(bestGap) ? "--" : String.format("%.0f px", bestGap),
-            evidenceLaps == 0 ? "--" : evidenceLaps + " laps",
+            testedViews == 0 ? "--" : testedViews + " views",
             Double.isNaN(lastTravel) ? "--" : String.format("%.0f px", lastTravel)
         };
         int columnWidth = width / labels.length;

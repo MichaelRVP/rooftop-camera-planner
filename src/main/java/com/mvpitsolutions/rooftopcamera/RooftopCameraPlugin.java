@@ -235,7 +235,7 @@ public class RooftopCameraPlugin extends Plugin
                 LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(course.indexOf(event.getId()),
                     point.getX(), point.getY(), client.getCameraYawTarget(),
                     client.getCameraPitchTarget(), currentCameraZoom(),
-                    clickboxFor(event.getId(), point.getX(), point.getY()), alignedTo(getSearchTarget()));
+                    clickboxFor(event.getId(), point.getX(), point.getY()), alignedTo(alignmentTarget()));
                 if (lap != null && config.autoLearn())
                 {
                     learnFrom(lap);
@@ -276,10 +276,27 @@ public class RooftopCameraPlugin extends Plugin
     int getTrackedObstacleCount() { return tracked.size(); }
     List<Rectangle> getScaledBestMarkers()
     {
-        return !markersAvailable(searchPlanner.isComplete(searchHistory), bestMarkerLayout, bestTravelProfile,
-            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom())
-            ? Collections.emptyList()
-            : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
+        if (!markersAvailable(searchPlanner.isComplete(searchHistory), bestMarkerLayout, bestTravelProfile,
+            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom()))
+        {
+            return Collections.emptyList();
+        }
+        return mergeLiveMarkers(bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight()),
+            liveSafeMarkers());
+    }
+
+    static List<Rectangle> mergeLiveMarkers(List<Rectangle> saved, Map<Integer, Rectangle> live)
+    {
+        List<Rectangle> merged = new ArrayList<>(saved);
+        for (Map.Entry<Integer, Rectangle> entry : live.entrySet())
+        {
+            int index = entry.getKey();
+            if (index >= 0 && index < merged.size() && entry.getValue() != null)
+            {
+                merged.set(index, new Rectangle(entry.getValue()));
+            }
+        }
+        return merged;
     }
 
     static boolean markersAvailable(boolean calibrationComplete, ScreenMarkerLayout layout,
@@ -364,10 +381,28 @@ public class RooftopCameraPlugin extends Plugin
 
     private boolean alignedTo(CameraTarget target)
     {
+        if (target == null)
+        {
+            return false;
+        }
         int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
         int pitchDelta = target.pitch - client.getCameraPitchTarget();
         int zoomDelta = target.zoom - currentCameraZoom();
         return Math.abs(yawDelta) <= 8 && Math.abs(pitchDelta) <= 4 && Math.abs(zoomDelta) <= 8;
+    }
+
+    private CameraTarget alignmentTarget()
+    {
+        return effectiveAlignmentTarget(getSearchTarget(), bestTravelProfile);
+    }
+
+    static CameraTarget effectiveAlignmentTarget(CameraTarget searchTarget, TravelProfile bestProfile)
+    {
+        if (searchTarget != null || bestProfile == null)
+        {
+            return searchTarget;
+        }
+        return new CameraTarget(bestProfile.yaw, bestProfile.pitch, bestProfile.zoom);
     }
 
     private String directionsTo(CameraTarget target)
@@ -472,6 +507,27 @@ public class RooftopCameraPlugin extends Plugin
         return boxes;
     }
 
+    private Map<Integer, Rectangle> liveSafeMarkers()
+    {
+        Map<Integer, Rectangle> live = new ConcurrentHashMap<>();
+        for (Map.Entry<TileObject, Integer> entry : tracked.entrySet())
+        {
+            Shape clickbox = entry.getKey().getClickbox();
+            if (clickbox == null || clickbox.getBounds().isEmpty())
+            {
+                continue;
+            }
+            Rectangle safe = ClickboxNormalizer.largestSafeRectangle(clickbox,
+                client.getCanvasWidth(), client.getCanvasHeight());
+            if (safe != null)
+            {
+                live.merge(entry.getValue(), safe,
+                    (left, right) -> left.width * left.height >= right.width * right.height ? left : right);
+            }
+        }
+        return live;
+    }
+
     private Rectangle clickboxFor(int objectId, int mouseX, int mouseY)
     {
         for (TileObject object : tracked.keySet())
@@ -490,11 +546,12 @@ public class RooftopCameraPlugin extends Plugin
 
     private void learnFrom(LapOptimizer.CompletedLap lap)
     {
-        CameraTarget requested = getSearchTarget();
+        boolean searchComplete = searchPlanner.isComplete(searchHistory);
+        CameraTarget requested = searchComplete ? alignmentTarget() : getSearchTarget();
         if (!lap.stableCamera || Double.isNaN(lap.markerTravel) || requested == null
             || !cameraAligned(lap.yaw, lap.pitch, lap.zoom, requested))
         {
-            if (requested != null && !lap.stableCamera)
+            if (!searchComplete && requested != null && !lap.stableCamera)
             {
                 searchHistory.getOrCreate(requested.yaw, requested.pitch, requested.zoom).reject();
                 configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
@@ -507,6 +564,19 @@ public class RooftopCameraPlugin extends Plugin
         int pitch = quantize(lap.pitch, 8);
         int zoom = quantize(lap.zoom, 16);
         ScreenMarkerLayout layout = new ScreenMarkerLayout(client.getCanvasWidth(), client.getCanvasHeight(), lap.markers);
+        if (searchComplete)
+        {
+            bestMarkerLayout = layout;
+            CameraCandidateStats best = searchHistory.best();
+            if (best != null)
+            {
+                best.representativeLayout = layout;
+                configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
+                    searchHistory.serialize());
+            }
+            configManager.setConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course), layout.serialize());
+            return;
+        }
         searchHistory.getOrCreate(yaw, pitch, zoom).add(lap, layout);
         configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course), searchHistory.serialize());
         applyBestCandidate();
