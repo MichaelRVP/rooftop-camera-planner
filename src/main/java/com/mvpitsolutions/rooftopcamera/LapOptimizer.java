@@ -52,9 +52,7 @@ final class LapOptimizer
     private int startYaw;
     private int startPitch;
     private int startZoom;
-    private int maxYawDelta;
-    private int maxPitchDelta;
-    private int maxZoomDelta;
+    private boolean cameraAdjusted;
     private int completedLaps;
     private Rectangle[] markers = new Rectangle[0];
 
@@ -81,7 +79,6 @@ final class LapOptimizer
         {
             return;
         }
-        updateCameraVariance(yaw, pitch, zoom);
         if (hasMouseSample)
         {
             currentTravel += Math.hypot(x - lastMouseX, y - lastMouseY);
@@ -92,6 +89,7 @@ final class LapOptimizer
     }
 
     void pauseMouseSampling() { hasMouseSample = false; }
+    void cameraAdjusted() { if (active) cameraAdjusted = true; }
 
     CompletedLap obstacleClicked(int index, int mouseX, int mouseY, int yaw, int pitch, int zoom,
         Rectangle clickbox)
@@ -135,7 +133,7 @@ final class LapOptimizer
     boolean wasLastLapStable() { return lastLapStable; }
     boolean isCurrentLapStableSoFar()
     {
-        return !active || (maxYawDelta <= 24 && maxPitchDelta <= 12 && maxZoomDelta <= 32);
+        return !active || !cameraAdjusted;
     }
     int getCompletedLaps() { return completedLaps; }
 
@@ -151,21 +149,12 @@ final class LapOptimizer
         startYaw = yaw;
         startPitch = pitch;
         startZoom = zoom;
-        maxYawDelta = 0;
-        maxPitchDelta = 0;
-        maxZoomDelta = 0;
+        cameraAdjusted = false;
         markers = new Rectangle[Math.max(0, routeSize)];
         if (routeSize > 0)
         {
             markers[0] = copy(clickbox);
         }
-    }
-
-    private void updateCameraVariance(int yaw, int pitch, int zoom)
-    {
-        maxYawDelta = Math.max(maxYawDelta, Math.abs(RooftopCameraPlugin.signedYawDelta(startYaw, yaw)));
-        maxPitchDelta = Math.max(maxPitchDelta, Math.abs(pitch - startPitch));
-        maxZoomDelta = Math.max(maxZoomDelta, Math.abs(zoom - startZoom));
     }
 
     private CompletedLap finishLap()
@@ -177,7 +166,7 @@ final class LapOptimizer
         lastMarkerTravel = markerScore.centerTravel;
         lastMarkerGap = markerScore.gapTravel;
         lastOverlappingTransitions = markerScore.overlappingTransitions;
-        lastLapStable = maxYawDelta <= 24 && maxPitchDelta <= 12 && maxZoomDelta <= 32;
+        lastLapStable = !cameraAdjusted;
         completedLaps++;
         List<Rectangle> snapshot = new ArrayList<>(markers.length);
         for (Rectangle marker : markers)

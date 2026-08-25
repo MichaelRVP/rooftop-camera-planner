@@ -7,12 +7,14 @@ import java.awt.Shape;
 import java.awt.Toolkit;
 import java.awt.event.AWTEventListener;
 import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.ToIntFunction;
@@ -67,12 +69,23 @@ public class RooftopCameraPlugin extends Plugin
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
     private int ticksSinceScan;
-    private final AWTEventListener zoomObserver = event ->
+    private final AtomicBoolean wheelInputPending = new AtomicBoolean();
+    private final AtomicBoolean cameraDragPending = new AtomicBoolean();
+    private final AWTEventListener cameraInputObserver = event ->
     {
         if (event instanceof MouseWheelEvent && course != null)
         {
             MouseWheelEvent wheel = (MouseWheelEvent) event;
             reachabilityTracker.zoomInput(wheel.getWheelRotation());
+            wheelInputPending.set(true);
+        }
+        else if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_DRAGGED && course != null)
+        {
+            MouseEvent mouse = (MouseEvent) event;
+            if ((mouse.getModifiersEx() & (MouseEvent.BUTTON2_DOWN_MASK | MouseEvent.BUTTON3_DOWN_MASK)) != 0)
+            {
+                cameraDragPending.set(true);
+            }
         }
     };
 
@@ -88,7 +101,8 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.add(cameraOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(ghostOverlay);
-        Toolkit.getDefaultToolkit().addAWTEventListener(zoomObserver, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
+        Toolkit.getDefaultToolkit().addAWTEventListener(cameraInputObserver,
+            AWTEvent.MOUSE_WHEEL_EVENT_MASK | AWTEvent.MOUSE_MOTION_EVENT_MASK);
     }
 
     @Override
@@ -97,7 +111,7 @@ public class RooftopCameraPlugin extends Plugin
         overlayManager.remove(cameraOverlay);
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(ghostOverlay);
-        Toolkit.getDefaultToolkit().removeAWTEventListener(zoomObserver);
+        Toolkit.getDefaultToolkit().removeAWTEventListener(cameraInputObserver);
         reset();
     }
 
@@ -158,6 +172,16 @@ public class RooftopCameraPlugin extends Plugin
     @Subscribe
     public void onClientTick(ClientTick event)
     {
+        boolean wheelAdjusted = wheelInputPending.getAndSet(false);
+        boolean dragAdjusted = cameraDragPending.getAndSet(false);
+        if (wheelAdjusted || dragAdjusted)
+        {
+            lapOptimizer.cameraAdjusted();
+        }
+        if (dragAdjusted)
+        {
+            reachabilityTracker.cameraDrag(client.getCameraYawTarget());
+        }
         if (course != null && reachabilityTracker.observe(getSearchTarget(),
             client.getCameraPitchTarget(), currentCameraZoom(), cameraBounds))
         {
@@ -551,5 +575,7 @@ public class RooftopCameraPlugin extends Plugin
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;
         ticksSinceScan = 0;
+        wheelInputPending.set(false);
+        cameraDragPending.set(false);
     }
 }

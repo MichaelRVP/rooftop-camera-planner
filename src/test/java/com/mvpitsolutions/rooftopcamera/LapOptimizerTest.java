@@ -52,12 +52,23 @@ public class LapOptimizerTest
     }
 
     @Test
-    public void cameraMovementMarksLapAsUnstable()
+    public void automaticCameraSettlingDoesNotInvalidateLap()
     {
         LapOptimizer optimizer = new LapOptimizer();
         optimizer.reset(2);
         optimizer.obstacleClicked(0, 0, 0, 100, 200, 500, marker(0, 0));
         LapOptimizer.CompletedLap lap = optimizer.obstacleClicked(1, 20, 0, 150, 200, 500, marker(20, 0));
+        assertTrue(lap.stableCamera);
+    }
+
+    @Test
+    public void explicitCameraInputMarksLapAsUnstable()
+    {
+        LapOptimizer optimizer = new LapOptimizer();
+        optimizer.reset(2);
+        optimizer.obstacleClicked(0, 0, 0, 100, 200, 500, marker(0, 0));
+        optimizer.cameraAdjusted();
+        LapOptimizer.CompletedLap lap = optimizer.obstacleClicked(1, 20, 0, 100, 200, 500, marker(20, 0));
         assertFalse(lap.stableCamera);
     }
 
