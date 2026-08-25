@@ -6,6 +6,7 @@ final class CameraCandidateStats
     final int pitch;
     final int zoom;
     int samples;
+    int rejections;
     double overlapTotal;
     double overlapAreaTotal;
     double gapTotal;
@@ -44,6 +45,8 @@ final class CameraCandidateStats
     double averageCenter() { return samples == 0 ? Double.POSITIVE_INFINITY : centerTotal / samples; }
     double averageMouse() { return samples == 0 ? Double.POSITIVE_INFINITY : mouseTotal / samples; }
     boolean isEligible() { return samples >= 1; }
+    boolean isRejected() { return samples == 0 && rejections >= 2; }
+    void reject() { rejections++; }
 
     boolean isBetterThan(CameraCandidateStats other)
     {

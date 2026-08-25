@@ -186,7 +186,10 @@ public class RooftopCameraPlugin extends Plugin
             client.getCameraPitchTarget(), currentCameraZoom(), cameraBounds))
         {
             persistCameraBounds();
-            activeSearchTarget = null;
+            if (!lapOptimizer.isActive())
+            {
+                activeSearchTarget = null;
+            }
         }
         if (course == null || !lapOptimizer.isActive())
         {
@@ -215,7 +218,7 @@ public class RooftopCameraPlugin extends Plugin
                 LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(course.indexOf(event.getId()),
                     point.getX(), point.getY(), client.getCameraYawTarget(),
                     client.getCameraPitchTarget(), currentCameraZoom(),
-                    clickboxFor(event.getId(), point.getX(), point.getY()));
+                    clickboxFor(event.getId(), point.getX(), point.getY()), alignedTo(getSearchTarget()));
                 if (lap != null && config.autoLearn())
                 {
                     learnFrom(lap);
@@ -474,6 +477,13 @@ public class RooftopCameraPlugin extends Plugin
         if (!lap.stableCamera || Double.isNaN(lap.markerTravel) || requested == null
             || !cameraAligned(lap.yaw, lap.pitch, lap.zoom, requested))
         {
+            if (requested != null && !lap.stableCamera)
+            {
+                searchHistory.getOrCreate(requested.yaw, requested.pitch, requested.zoom).reject();
+                configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
+                    searchHistory.serialize());
+                activeSearchTarget = null;
+            }
             return;
         }
         int yaw = CameraSearchPlanner.normalizeYaw(quantize(lap.yaw, 16));

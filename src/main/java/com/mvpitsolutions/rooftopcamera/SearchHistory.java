@@ -69,7 +69,7 @@ final class SearchHistory
                 .encodeToString(c.representativeLayout.serialize().getBytes(StandardCharsets.UTF_8));
             entries.add(c.yaw + "," + c.pitch + "," + c.zoom + "," + c.samples + ","
                 + c.overlapTotal + "," + c.overlapAreaTotal + "," + c.gapTotal + ","
-                + c.centerTotal + "," + c.mouseTotal + "," + layout);
+                + c.centerTotal + "," + c.mouseTotal + "," + layout + "," + c.rejections);
         }
         return String.join("~", entries);
     }
@@ -83,11 +83,11 @@ final class SearchHistory
             for (String entry : value.split("~"))
             {
                 String[] f = entry.split(",", -1);
-                if (f.length != 9 && f.length != 10) continue;
+                if (f.length != 9 && f.length != 10 && f.length != 11) continue;
                 CameraCandidateStats c = history.getOrCreate(Integer.parseInt(f[0]), Integer.parseInt(f[1]), Integer.parseInt(f[2]));
                 c.samples = Integer.parseInt(f[3]);
                 c.overlapTotal = Double.parseDouble(f[4]);
-                int offset = f.length == 10 ? 1 : 0;
+                int offset = f.length >= 10 ? 1 : 0;
                 c.overlapAreaTotal = offset == 1 ? Double.parseDouble(f[5]) : 0;
                 c.gapTotal = Double.parseDouble(f[5 + offset]);
                 c.centerTotal = Double.parseDouble(f[6 + offset]);
@@ -96,6 +96,10 @@ final class SearchHistory
                 {
                     String decoded = new String(Base64.getUrlDecoder().decode(f[8 + offset]), StandardCharsets.UTF_8);
                     c.representativeLayout = ScreenMarkerLayout.parse(decoded);
+                }
+                if (f.length == 11)
+                {
+                    c.rejections = Integer.parseInt(f[10]);
                 }
             }
         }

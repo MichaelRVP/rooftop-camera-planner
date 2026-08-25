@@ -44,6 +44,21 @@ public class CameraSearchPlannerTest
     }
 
     @Test
+    public void advancesPastCameraThatCourseRejectsTwice()
+    {
+        SearchHistory history = new SearchHistory();
+        CameraTarget current = new CameraTarget(100, 1288, 512);
+        CameraCandidateStats rejected = history.getOrCreate(96, 1288, 512);
+        rejected.reject();
+        assertEquals(new CameraTarget(96, 1288, 512).key(),
+            planner.nextTarget(history, null, current, bounds).key());
+
+        rejected.reject();
+        assertEquals(new CameraTarget(784, 1288, 512).key(),
+            planner.nextTarget(history, null, current, bounds).key());
+    }
+
+    @Test
     public void refinesAroundBestGlobalViewOnAllThreeAxes()
     {
         SearchHistory history = seededGlobals();

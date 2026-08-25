@@ -20,6 +20,7 @@ public class SearchHistoryTest
         candidate.gapTotal = 300;
         candidate.centerTotal = 600;
         candidate.mouseTotal = 900;
+        candidate.rejections = 1;
         candidate.representativeLayout = new ScreenMarkerLayout(800, 600,
             Arrays.asList(new Rectangle(1, 2, 3, 4), new Rectangle(5, 6, 7, 8)));
 
@@ -29,6 +30,7 @@ public class SearchHistoryTest
         assertEquals(3, restored.samples);
         assertEquals(3.0, restored.averageOverlap(), 0.001);
         assertEquals(90.0, restored.averageOverlapArea(), 0.001);
+        assertEquals(1, restored.rejections);
         assertEquals(new Rectangle(1, 2, 3, 4), restored.representativeLayout.markers.get(0));
     }
 

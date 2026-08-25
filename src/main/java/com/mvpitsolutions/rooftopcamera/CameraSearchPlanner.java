@@ -24,7 +24,9 @@ final class CameraSearchPlanner
         }
 
         CameraCandidateStats globalBest = bestOf(history, globalTargets);
-        CameraTarget center = new CameraTarget(globalBest.yaw, globalBest.pitch, globalBest.zoom);
+        CameraTarget center = globalBest == null
+            ? new CameraTarget(anchor.yaw, anchor.pitch, anchor.zoom)
+            : new CameraTarget(globalBest.yaw, globalBest.pitch, globalBest.zoom);
         for (CameraTarget target : localTargets(center, bounds))
         {
             if (needsLap(history, target)) return target;
@@ -33,7 +35,7 @@ final class CameraSearchPlanner
         if (history.totalSamples() < MAX_VALID_LAPS)
         {
             CameraCandidateStats winner = history.best();
-            return new CameraTarget(winner.yaw, winner.pitch, winner.zoom);
+            return winner == null ? null : new CameraTarget(winner.yaw, winner.pitch, winner.zoom);
         }
         return null;
     }
@@ -46,7 +48,7 @@ final class CameraSearchPlanner
     private static boolean needsLap(SearchHistory history, CameraTarget target)
     {
         CameraCandidateStats candidate = history.get(target);
-        return candidate == null || candidate.samples == 0;
+        return candidate == null || (candidate.samples == 0 && !candidate.isRejected());
     }
 
     private static List<CameraTarget> globalTargets(CameraCandidateStats anchor, CameraBounds bounds)

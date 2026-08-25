@@ -62,13 +62,24 @@ public class LapOptimizerTest
     }
 
     @Test
-    public void explicitCameraInputMarksLapAsUnstable()
+    public void midLapCameraCorrectionCanRecover()
     {
         LapOptimizer optimizer = new LapOptimizer();
         optimizer.reset(2);
         optimizer.obstacleClicked(0, 0, 0, 100, 200, 500, marker(0, 0));
         optimizer.cameraAdjusted();
         LapOptimizer.CompletedLap lap = optimizer.obstacleClicked(1, 20, 0, 100, 200, 500, marker(20, 0));
+        assertTrue(lap.stableCamera);
+    }
+
+    @Test
+    public void forcedCameraMismatchAtObstacleRejectsLap()
+    {
+        LapOptimizer optimizer = new LapOptimizer();
+        optimizer.reset(2);
+        optimizer.obstacleClicked(0, 0, 0, 100, 200, 500, marker(0, 0), true);
+        LapOptimizer.CompletedLap lap = optimizer.obstacleClicked(1, 20, 0, 100, 250, 500,
+            marker(20, 0), false);
         assertFalse(lap.stableCamera);
     }
 

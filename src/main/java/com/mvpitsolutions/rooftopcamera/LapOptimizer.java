@@ -52,7 +52,7 @@ final class LapOptimizer
     private int startYaw;
     private int startPitch;
     private int startZoom;
-    private boolean cameraAdjusted;
+    private boolean cameraAlignedAtCheckpoints;
     private int completedLaps;
     private Rectangle[] markers = new Rectangle[0];
 
@@ -89,10 +89,16 @@ final class LapOptimizer
     }
 
     void pauseMouseSampling() { hasMouseSample = false; }
-    void cameraAdjusted() { if (active) cameraAdjusted = true; }
+    void cameraAdjusted() { if (active) pauseMouseSampling(); }
 
     CompletedLap obstacleClicked(int index, int mouseX, int mouseY, int yaw, int pitch, int zoom,
         Rectangle clickbox)
+    {
+        return obstacleClicked(index, mouseX, mouseY, yaw, pitch, zoom, clickbox, true);
+    }
+
+    CompletedLap obstacleClicked(int index, int mouseX, int mouseY, int yaw, int pitch, int zoom,
+        Rectangle clickbox, boolean cameraAligned)
     {
         if (index == 0)
         {
@@ -100,10 +106,10 @@ final class LapOptimizer
             {
                 sampleMouse(mouseX, mouseY, yaw, pitch, zoom);
                 CompletedLap completed = finishLap();
-                beginLap(mouseX, mouseY, yaw, pitch, zoom, clickbox);
+                beginLap(mouseX, mouseY, yaw, pitch, zoom, clickbox, cameraAligned);
                 return completed;
             }
-            beginLap(mouseX, mouseY, yaw, pitch, zoom, clickbox);
+            beginLap(mouseX, mouseY, yaw, pitch, zoom, clickbox, cameraAligned);
             return null;
         }
         if (!active || index == lastObstacleIndex)
@@ -117,6 +123,7 @@ final class LapOptimizer
             return null;
         }
         sampleMouse(mouseX, mouseY, yaw, pitch, zoom);
+        cameraAlignedAtCheckpoints &= cameraAligned;
         markers[index] = copy(clickbox);
         lastObstacleIndex = index;
         expectedIndex++;
@@ -133,11 +140,12 @@ final class LapOptimizer
     boolean wasLastLapStable() { return lastLapStable; }
     boolean isCurrentLapStableSoFar()
     {
-        return !active || !cameraAdjusted;
+        return !active || cameraAlignedAtCheckpoints;
     }
     int getCompletedLaps() { return completedLaps; }
 
-    private void beginLap(int mouseX, int mouseY, int yaw, int pitch, int zoom, Rectangle clickbox)
+    private void beginLap(int mouseX, int mouseY, int yaw, int pitch, int zoom, Rectangle clickbox,
+        boolean cameraAligned)
     {
         active = routeSize > 0;
         expectedIndex = routeSize == 1 ? routeSize : 1;
@@ -149,7 +157,7 @@ final class LapOptimizer
         startYaw = yaw;
         startPitch = pitch;
         startZoom = zoom;
-        cameraAdjusted = false;
+        cameraAlignedAtCheckpoints = cameraAligned;
         markers = new Rectangle[Math.max(0, routeSize)];
         if (routeSize > 0)
         {
@@ -166,7 +174,7 @@ final class LapOptimizer
         lastMarkerTravel = markerScore.centerTravel;
         lastMarkerGap = markerScore.gapTravel;
         lastOverlappingTransitions = markerScore.overlappingTransitions;
-        lastLapStable = !cameraAdjusted;
+        lastLapStable = cameraAlignedAtCheckpoints;
         completedLaps++;
         List<Rectangle> snapshot = new ArrayList<>(markers.length);
         for (Rectangle marker : markers)
