@@ -34,10 +34,16 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
     private int evidenceLaps;
     private int testedViews;
     private double lastTravel = Double.NaN;
+    private String calibrationNote;
 
     void setState(CameraGuidanceState state)
     {
         this.state = state;
+    }
+
+    void setCalibrationNote(String calibrationNote)
+    {
+        this.calibrationNote = calibrationNote;
     }
 
     void setRouteState(String courseName, int nextObstacle, int routeProgress,
@@ -93,8 +99,11 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
 
         g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
         g.setColor(state.isAligned() ? AQUA : Color.WHITE);
-        String cameraStatus = state.isAligned() ? "CAMERA LOCKED" : "ALIGN CAMERA";
+        String cameraStatus = state.isAligned() ? "CAMERA LOCKED"
+            : state.calibration ? "ALIGN CAMERA" : "ALIGN WINNING CAMERA";
         if (!stableLap) cameraStatus = "CAMERA CHANGED - NEXT LAP COUNTS";
+        if (calibrationNote != null) cameraStatus = calibrationNote;
+        if (calibrationNote != null) g.setColor(GOLD);
         g.drawString(cameraStatus, x + 14, y + 44);
         g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
         g.setColor(MUTED);

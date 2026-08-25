@@ -4,6 +4,7 @@ import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayDeque;
+import java.util.Collection;
 import java.util.Deque;
 
 final class ClickboxNormalizer
@@ -38,6 +39,27 @@ final class ClickboxNormalizer
             best = larger(best, largestHistogramRectangle(heights, clipped, row));
         }
         return makeContained(shape, best);
+    }
+
+    static Rectangle nearest(Rectangle pointBounds, Collection<Rectangle> candidates)
+    {
+        Rectangle best = null;
+        double bestDistance = Double.POSITIVE_INFINITY;
+        double x = pointBounds.getCenterX();
+        double y = pointBounds.getCenterY();
+        for (Rectangle candidate : candidates)
+        {
+            if (candidate == null || candidate.isEmpty()) continue;
+            double dx = Math.max(candidate.x - x, Math.max(0, x - candidate.getMaxX()));
+            double dy = Math.max(candidate.y - y, Math.max(0, y - candidate.getMaxY()));
+            double distance = dx * dx + dy * dy;
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = candidate;
+            }
+        }
+        return best == null ? null : new Rectangle(best);
     }
 
     private static Rectangle largestHistogramRectangle(int[] heights, Rectangle origin, int row)

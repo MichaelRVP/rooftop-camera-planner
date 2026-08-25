@@ -42,10 +42,13 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @PluginDescriptor(name = "Rooftop Camera Planner", description = "Learns low-movement camera layouts for rooftop Agility", tags = {"agility", "rooftop", "camera", "optimizer"})
 public class RooftopCameraPlugin extends Plugin
 {
+    private static final Logger log = LoggerFactory.getLogger(RooftopCameraPlugin.class);
     private static final String CALIBRATION_VERSION = "camera-varc-10-v3";
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
@@ -71,6 +74,7 @@ public class RooftopCameraPlugin extends Plugin
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
     private int ticksSinceScan;
+    private String calibrationNote;
     private final AtomicBoolean wheelInputPending = new AtomicBoolean();
     private final AtomicBoolean cameraDragPending = new AtomicBoolean();
     private final AWTEventListener cameraInputObserver = event ->
@@ -134,6 +138,7 @@ public class RooftopCameraPlugin extends Plugin
             searchHistory = course == null ? new SearchHistory() : SearchHistory.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course)));
             activeSearchTarget = null;
+            calibrationNote = null;
             if (course != null && !CALIBRATION_VERSION.equals(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, calibrationVersionKey(course))))
             {
@@ -274,6 +279,7 @@ public class RooftopCameraPlugin extends Plugin
     Map<TileObject, Integer> getTracked() { return tracked; }
     int getVisibleObstacleCount() { return visibleObstacleCount; }
     int getTrackedObstacleCount() { return tracked.size(); }
+    String getCalibrationNote() { return calibrationNote; }
     List<Rectangle> getScaledBestMarkers()
     {
         if (!markersAvailable(searchPlanner.isComplete(searchHistory), bestMarkerLayout, bestTravelProfile,
@@ -530,18 +536,20 @@ public class RooftopCameraPlugin extends Plugin
 
     private Rectangle clickboxFor(int objectId, int mouseX, int mouseY)
     {
+        List<Rectangle> candidates = new ArrayList<>();
         for (TileObject object : tracked.keySet())
         {
             if (object.getId() != objectId) continue;
             Shape shape = object.getClickbox();
             if (shape == null || shape.getBounds().isEmpty()) continue;
-            if (shape.contains(mouseX, mouseY))
+            Rectangle safe = ClickboxNormalizer.largestSafeRectangle(shape,
+                client.getCanvasWidth(), client.getCanvasHeight());
+            if (safe != null)
             {
-                return ClickboxNormalizer.largestSafeRectangle(shape,
-                    client.getCanvasWidth(), client.getCanvasHeight());
+                candidates.add(safe);
             }
         }
-        return null;
+        return ClickboxNormalizer.nearest(new Rectangle(mouseX, mouseY, 1, 1), candidates);
     }
 
     private void learnFrom(LapOptimizer.CompletedLap lap)
@@ -551,6 +559,13 @@ public class RooftopCameraPlugin extends Plugin
         if (!lap.stableCamera || Double.isNaN(lap.markerTravel) || requested == null
             || !cameraAligned(lap.yaw, lap.pitch, lap.zoom, requested))
         {
+            calibrationNote = !lap.stableCamera ? "LAST LAP SKIPPED: CAMERA SHIFTED"
+                : Double.isNaN(lap.markerTravel) ? "LAST LAP SKIPPED: MARKER DATA"
+                : requested == null ? "LAST LAP SKIPPED: NO TARGET"
+                : "LAST LAP SKIPPED: CAMERA MISALIGNED";
+            log.info("Calibration lap skipped for {}: stable={}, markerTravel={}, requested={}, actual={}/{}/{}",
+                course, lap.stableCamera, lap.markerTravel,
+                requested == null ? "none" : requested.key(), lap.yaw, lap.pitch, lap.zoom);
             if (!searchComplete && requested != null && !lap.stableCamera)
             {
                 searchHistory.getOrCreate(requested.yaw, requested.pitch, requested.zoom).reject();
@@ -560,6 +575,7 @@ public class RooftopCameraPlugin extends Plugin
             }
             return;
         }
+        calibrationNote = null;
         int yaw = CameraSearchPlanner.normalizeYaw(quantize(lap.yaw, 16));
         int pitch = quantize(lap.pitch, 8);
         int zoom = quantize(lap.zoom, 16);
@@ -683,6 +699,7 @@ public class RooftopCameraPlugin extends Plugin
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;
         ticksSinceScan = 0;
+        calibrationNote = null;
         wheelInputPending.set(false);
         cameraDragPending.set(false);
         reachabilityTracker.reset();
