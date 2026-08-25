@@ -35,6 +35,6 @@ final class CameraGuidanceState
 
     String zoomLabel()
     {
-        return isZoomAligned() ? "ZOOM SET" : zoomDelta > 0 ? "ZOOM IN" : "ZOOM OUT";
+        return isZoomAligned() ? "ZOOM SET" : zoomDelta > 0 ? "ZOOM OUT" : "ZOOM IN";
     }
 }

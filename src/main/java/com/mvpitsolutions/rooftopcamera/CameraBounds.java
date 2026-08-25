@@ -9,7 +9,7 @@ final class CameraBounds
 
     CameraBounds()
     {
-        this(128, 2040, 128, 2048);
+        this(128, 2040, 128, 8192);
     }
 
     CameraBounds(int minPitch, int maxPitch, int minZoom, int maxZoom)
@@ -65,8 +65,15 @@ final class CameraBounds
         {
             String[] parts = value.split(",");
             if (parts.length != 4) return new CameraBounds();
-            return new CameraBounds(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]),
-                Integer.parseInt(parts[2]), Integer.parseInt(parts[3]));
+            int minPitch = Integer.parseInt(parts[0]);
+            int maxPitch = Integer.parseInt(parts[1]);
+            int minZoom = Integer.parseInt(parts[2]);
+            int maxZoom = Integer.parseInt(parts[3]);
+            if (minPitch >= maxPitch || minZoom >= maxZoom)
+            {
+                return new CameraBounds();
+            }
+            return new CameraBounds(minPitch, maxPitch, minZoom, maxZoom);
         }
         catch (RuntimeException ignored)
         {

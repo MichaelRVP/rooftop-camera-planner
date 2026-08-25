@@ -14,7 +14,7 @@ public class CameraGuidanceStateTest
         CameraGuidanceState state = new CameraGuidanceState(200, -40, 100, true, 2);
         assertEquals("TURN RIGHT", state.turnLabel());
         assertEquals("TILT DOWN", state.tiltLabel());
-        assertEquals("ZOOM IN", state.zoomLabel());
+        assertEquals("ZOOM OUT", state.zoomLabel());
         assertFalse(state.isAligned());
     }
 
@@ -26,5 +26,11 @@ public class CameraGuidanceStateTest
         assertEquals("YAW SET", state.turnLabel());
         assertEquals("PITCH SET", state.tiltLabel());
         assertEquals("ZOOM SET", state.zoomLabel());
+    }
+
+    @Test
+    public void negativeCameraDistanceDeltaMeansZoomIn()
+    {
+        assertEquals("ZOOM IN", new CameraGuidanceState(0, 0, -100, true, 2).zoomLabel());
     }
 }

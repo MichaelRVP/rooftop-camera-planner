@@ -67,7 +67,7 @@ final class CameraReachabilityTracker
             unchangedZoomInputs = 0;
             return;
         }
-        boolean towardTarget = target.zoom < lastZoom ? wheelRotation > 0 : wheelRotation < 0;
+        boolean towardTarget = target.zoom < lastZoom ? wheelRotation < 0 : wheelRotation > 0;
         if (!towardTarget)
         {
             return;

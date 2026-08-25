@@ -43,7 +43,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 @PluginDescriptor(name = "Rooftop Camera Planner", description = "Learns low-movement camera layouts for rooftop Agility", tags = {"agility", "rooftop", "camera", "optimizer"})
 public class RooftopCameraPlugin extends Plugin
 {
-    private static final String CALIBRATION_VERSION = "bounded-10-v1";
+    private static final String CALIBRATION_VERSION = "camera-distance-10-v2";
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
     @Inject private ConfigManager configManager;
@@ -61,6 +61,7 @@ public class RooftopCameraPlugin extends Plugin
     private ScreenMarkerLayout bestMarkerLayout;
     private SearchHistory searchHistory = new SearchHistory();
     private CameraBounds cameraBounds = new CameraBounds();
+    private CameraTarget activeSearchTarget;
     private double currentScore;
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
@@ -115,6 +116,7 @@ public class RooftopCameraPlugin extends Plugin
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course)));
             searchHistory = course == null ? new SearchHistory() : SearchHistory.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course)));
+            activeSearchTarget = null;
             if (course != null && !CALIBRATION_VERSION.equals(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, calibrationVersionKey(course))))
             {
@@ -156,9 +158,10 @@ public class RooftopCameraPlugin extends Plugin
     public void onClientTick(ClientTick event)
     {
         if (course != null && reachabilityTracker.observe(getSearchTarget(),
-            client.getCameraPitchTarget(), client.get3dZoom(), cameraBounds))
+            client.getCameraPitchTarget(), currentCameraDistance(), cameraBounds))
         {
             persistCameraBounds();
+            activeSearchTarget = null;
         }
         if (course == null || !lapOptimizer.isActive())
         {
@@ -172,7 +175,7 @@ public class RooftopCameraPlugin extends Plugin
             return;
         }
         lapOptimizer.sampleMouse(point.getX(), point.getY(), client.getCameraYawTarget(),
-            client.getCameraPitchTarget(), client.get3dZoom());
+            client.getCameraPitchTarget(), currentCameraDistance());
     }
 
     @Subscribe
@@ -186,7 +189,7 @@ public class RooftopCameraPlugin extends Plugin
             {
                 LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(course.indexOf(event.getId()),
                     point.getX(), point.getY(), client.getCameraYawTarget(),
-                    client.getCameraPitchTarget(), client.get3dZoom(),
+                    client.getCameraPitchTarget(), currentCameraDistance(),
                     clickboxFor(event.getId(), point.getX(), point.getY()));
                 if (lap != null && config.autoLearn())
                 {
@@ -229,7 +232,7 @@ public class RooftopCameraPlugin extends Plugin
     List<Rectangle> getScaledBestMarkers()
     {
         return !markersAvailable(searchPlanner.isComplete(searchHistory), bestMarkerLayout, bestTravelProfile,
-            client.getCameraYawTarget(), client.getCameraPitchTarget(), client.get3dZoom())
+            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraDistance())
             ? Collections.emptyList()
             : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
     }
@@ -261,7 +264,12 @@ public class RooftopCameraPlugin extends Plugin
     CameraTarget getSearchTarget()
     {
         if (course == null) return null;
-        return searchPlanner.nextTarget(searchHistory, searchHistory.best(), currentCameraTarget(), cameraBounds);
+        if (activeSearchTarget == null)
+        {
+            activeSearchTarget = searchPlanner.nextTarget(
+                searchHistory, searchHistory.best(), currentCameraTarget(), cameraBounds);
+        }
+        return activeSearchTarget;
     }
     int getSearchTargetSamples()
     {
@@ -283,7 +291,7 @@ public class RooftopCameraPlugin extends Plugin
         {
             if (bestTravelProfile == null) return "Complete a lap to begin calibration";
             CameraTarget best = new CameraTarget(bestTravelProfile.yaw, bestTravelProfile.pitch, bestTravelProfile.zoom);
-            return cameraAligned(client.getCameraYawTarget(), client.getCameraPitchTarget(), client.get3dZoom(),
+            return cameraAligned(client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraDistance(),
                 bestTravelProfile) ? "Optimized camera locked - markers active" : directionsTo(best);
         }
         if (alignedTo(target))
@@ -306,14 +314,14 @@ public class RooftopCameraPlugin extends Plugin
         return new CameraGuidanceState(
             signedYawDelta(client.getCameraYawTarget(), target.yaw),
             target.pitch - client.getCameraPitchTarget(),
-            target.zoom - client.get3dZoom(), calibration, getValidCalibrationLaps());
+            target.zoom - currentCameraDistance(), calibration, getValidCalibrationLaps());
     }
 
     private boolean alignedTo(CameraTarget target)
     {
         int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
         int pitchDelta = target.pitch - client.getCameraPitchTarget();
-        int zoomDelta = target.zoom - client.get3dZoom();
+        int zoomDelta = target.zoom - currentCameraDistance();
         return Math.abs(yawDelta) <= 8 && Math.abs(pitchDelta) <= 4 && Math.abs(zoomDelta) <= 8;
     }
 
@@ -321,10 +329,10 @@ public class RooftopCameraPlugin extends Plugin
     {
         int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
         int pitchDelta = target.pitch - client.getCameraPitchTarget();
-        int zoomDelta = target.zoom - client.get3dZoom();
+        int zoomDelta = target.zoom - currentCameraDistance();
         String turn = Math.abs(yawDelta) <= 8 ? "hold yaw" : yawDelta > 0 ? "rotate right" : "rotate left";
         String tilt = Math.abs(pitchDelta) <= 4 ? "hold pitch" : pitchDelta > 0 ? "tilt up" : "tilt down";
-        String zoom = Math.abs(zoomDelta) <= 8 ? "hold zoom" : zoomDelta > 0 ? "zoom in" : "zoom out";
+        String zoom = Math.abs(zoomDelta) <= 8 ? "hold zoom" : zoomDelta > 0 ? "zoom out" : "zoom in";
         return turn + " | " + tilt + " | " + zoom;
     }
 
@@ -450,6 +458,7 @@ public class RooftopCameraPlugin extends Plugin
         searchHistory.getOrCreate(yaw, pitch, zoom).add(lap, layout);
         configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course), searchHistory.serialize());
         applyBestCandidate();
+        activeSearchTarget = null;
     }
 
     private static int quantize(int value, int step)
@@ -460,7 +469,22 @@ public class RooftopCameraPlugin extends Plugin
     private CameraTarget currentCameraTarget()
     {
         return new CameraTarget(CameraSearchPlanner.normalizeYaw(quantize(client.getCameraYawTarget(), 16)),
-            quantize(client.getCameraPitchTarget(), 8), quantize(client.get3dZoom(), 16));
+            quantize(client.getCameraPitchTarget(), 8), quantize(currentCameraDistance(), 16));
+    }
+
+    private int currentCameraDistance()
+    {
+        return cameraDistance(client.getCameraX(), client.getCameraY(), client.getCameraZ(),
+            client.getCameraFocalPointX(), client.getCameraFocalPointY(), client.getCameraFocalPointZ());
+    }
+
+    static int cameraDistance(int cameraX, int cameraY, int cameraZ,
+        float focalX, float focalY, float focalZ)
+    {
+        double dx = cameraX - focalX;
+        double dy = cameraY - focalY;
+        double dz = cameraZ - focalZ;
+        return (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
     }
 
     private void bootstrapLegacyProfile()
@@ -530,6 +554,7 @@ public class RooftopCameraPlugin extends Plugin
         bestMarkerLayout = null;
         lapOptimizer.reset(0);
         searchHistory = new SearchHistory();
+        activeSearchTarget = null;
         cameraBounds = new CameraBounds();
         currentScore = 0;
         lastClickedObstacle = -1;
