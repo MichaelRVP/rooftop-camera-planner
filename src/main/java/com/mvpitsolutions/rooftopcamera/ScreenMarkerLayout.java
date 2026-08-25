@@ -10,11 +10,19 @@ final class ScreenMarkerLayout
     final int canvasWidth;
     final int canvasHeight;
     final List<Rectangle> markers;
+    final boolean verifiedInnerRectangles;
 
     ScreenMarkerLayout(int canvasWidth, int canvasHeight, List<Rectangle> markers)
     {
+        this(canvasWidth, canvasHeight, markers, true);
+    }
+
+    private ScreenMarkerLayout(int canvasWidth, int canvasHeight, List<Rectangle> markers,
+        boolean verifiedInnerRectangles)
+    {
         this.canvasWidth = canvasWidth;
         this.canvasHeight = canvasHeight;
+        this.verifiedInnerRectangles = verifiedInnerRectangles;
         List<Rectangle> copy = new ArrayList<>(markers.size());
         for (Rectangle marker : markers)
         {
@@ -44,7 +52,7 @@ final class ScreenMarkerLayout
 
     String serialize()
     {
-        StringBuilder result = new StringBuilder(canvasWidth + "," + canvasHeight + "|");
+        StringBuilder result = new StringBuilder("v2|" + canvasWidth + "," + canvasHeight + "|");
         for (int i = 0; i < markers.size(); i++)
         {
             if (i > 0) result.append(';');
@@ -64,13 +72,15 @@ final class ScreenMarkerLayout
         try
         {
             String[] sections = value.split("\\|", -1);
-            if (sections.length != 2) return null;
-            String[] size = sections[0].split(",");
+            boolean verified = sections.length == 3 && "v2".equals(sections[0]);
+            if (!verified && sections.length != 2) return null;
+            String[] size = sections[verified ? 1 : 0].split(",");
             if (size.length != 2) return null;
             List<Rectangle> markers = new ArrayList<>();
-            if (!sections[1].isEmpty())
+            String encodedMarkers = sections[verified ? 2 : 1];
+            if (!encodedMarkers.isEmpty())
             {
-                for (String encoded : sections[1].split(";", -1))
+                for (String encoded : encodedMarkers.split(";", -1))
                 {
                     if (encoded.isEmpty())
                     {
@@ -83,7 +93,7 @@ final class ScreenMarkerLayout
                         Integer.parseInt(fields[2]), Integer.parseInt(fields[3])));
                 }
             }
-            return new ScreenMarkerLayout(Integer.parseInt(size[0]), Integer.parseInt(size[1]), markers);
+            return new ScreenMarkerLayout(Integer.parseInt(size[0]), Integer.parseInt(size[1]), markers, verified);
         }
         catch (NumberFormatException ignored)
         {

@@ -17,7 +17,7 @@ public class CameraSearchPlannerTest
     }
 
     @Test
-    public void beginsWithCoarseYawNeighborAfterBaseline()
+    public void beginsWithWideYawScoutAfterBaseline()
     {
         SearchHistory history = new SearchHistory();
         CameraCandidateStats baseline = history.getOrCreate(0, 1288, 512);
@@ -29,7 +29,7 @@ public class CameraSearchPlannerTest
 
         CameraTarget target = new CameraSearchPlanner().nextTarget(history, history.best(),
             new CameraTarget(0, 1288, 512), new CameraBounds());
-        assertEquals(new CameraTarget(1792, 1288, 512).key(), target.key());
+        assertEquals(new CameraTarget(512, 1288, 512).key(), target.key());
     }
 
     @Test
@@ -37,6 +37,7 @@ public class CameraSearchPlannerTest
     {
         SearchHistory history = new SearchHistory();
         CameraCandidateStats baseline = eligible(history, 0, 1288, 512);
+        seedWideScouts(history, 0, 1288, 512);
         int[][] steps = {{256,128,128},{128,64,64},{64,32,32},{32,16,16},{16,8,16}};
         for (int level = 0; level < steps.length; level++)
         {
@@ -60,7 +61,27 @@ public class CameraSearchPlannerTest
         CameraBounds bounds = new CameraBounds(1288, 2040, 512, 2048);
         CameraTarget target = new CameraSearchPlanner().nextTarget(history, baseline,
             new CameraTarget(0, 1288, 512), bounds);
-        assertEquals(new CameraTarget(1792, 1288, 512).key(), target.key());
+        assertEquals(new CameraTarget(512, 1288, 512).key(), target.key());
+    }
+
+    @Test
+    public void wideScoutsStayAnchoredToFirstBaselineWhenWinnerChanges()
+    {
+        SearchHistory history = new SearchHistory();
+        eligible(history, 0, 1288, 512);
+        CameraCandidateStats winner = eligible(history, 512, 1288, 512);
+        winner.overlapTotal = 20;
+        CameraTarget target = new CameraSearchPlanner().nextTarget(history, history.best(),
+            new CameraTarget(512, 1288, 512), new CameraBounds());
+        assertEquals(new CameraTarget(768, 1288, 512).key(), target.key());
+    }
+
+    private static void seedWideScouts(SearchHistory history, int yaw, int pitch, int zoom)
+    {
+        for (int offset : new int[] {512, 768, 1024, 1280, 1536})
+        {
+            eligible(history, CameraSearchPlanner.normalizeYaw(yaw + offset), pitch, zoom);
+        }
     }
 
     private static CameraCandidateStats eligible(SearchHistory history, int yaw, int pitch, int zoom)

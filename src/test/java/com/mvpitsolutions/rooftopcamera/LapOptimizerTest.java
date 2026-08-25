@@ -24,6 +24,7 @@ public class LapOptimizerTest
         assertEquals(20.0, lap.mouseTravel, 0.001);
         assertEquals(20.0, lap.markerTravel, 0.001);
         assertEquals(0.0, lap.markerGap, 0.001);
+        assertEquals(92.0, lap.overlapArea, 0.001);
         assertEquals(3, lap.overlappingTransitions);
         assertTrue(lap.stableCamera);
         assertTrue(optimizer.isActive());

@@ -5,6 +5,8 @@ import java.util.List;
 
 final class CameraSearchPlanner
 {
+    // Deliberately distant probes prevent the fine search from settling around a poor starting yaw.
+    private static final int[] WIDE_YAW_OFFSETS = {512, 768, 1024, 1280, 1536};
     private static final int[][] STEPS = {
         {256, 128, 128}, {128, 64, 64}, {64, 32, 32}, {32, 16, 16}, {16, 8, 16}
     };
@@ -18,6 +20,19 @@ final class CameraSearchPlanner
             CameraCandidateStats baseline = history.get(center);
             return baseline == null || baseline.samples < 2 ? center : null;
         }
+
+        CameraCandidateStats anchor = history.firstEligible();
+        if (anchor != null)
+        {
+            for (int offset : WIDE_YAW_OFFSETS)
+            {
+                CameraTarget target = new CameraTarget(normalizeYaw(anchor.yaw + offset),
+                    bounds.clampPitch(anchor.pitch), bounds.clampZoom(anchor.zoom));
+                CameraCandidateStats candidate = history.get(target);
+                if (candidate == null || candidate.samples < 2) return target;
+            }
+        }
+
         for (int level = 0; level < STEPS.length; level++)
         {
             for (CameraTarget target : neighbors(center, STEPS[level], level == STEPS.length - 1, bounds))

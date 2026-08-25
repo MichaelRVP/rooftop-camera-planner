@@ -16,6 +16,7 @@ public class SearchHistoryTest
         CameraCandidateStats candidate = history.getOrCreate(32, 1200, 512);
         candidate.samples = 3;
         candidate.overlapTotal = 9;
+        candidate.overlapAreaTotal = 270;
         candidate.gapTotal = 300;
         candidate.centerTotal = 600;
         candidate.mouseTotal = 900;
@@ -27,6 +28,7 @@ public class SearchHistoryTest
         assertNotNull(restored);
         assertEquals(3, restored.samples);
         assertEquals(3.0, restored.averageOverlap(), 0.001);
+        assertEquals(90.0, restored.averageOverlapArea(), 0.001);
         assertEquals(new Rectangle(1, 2, 3, 4), restored.representativeLayout.markers.get(0));
     }
 
@@ -41,5 +43,18 @@ public class SearchHistoryTest
         assertEquals(first, history.best());
         first.samples = 4; first.overlapTotal = 6;
         assertEquals(second, history.best());
+    }
+
+    @Test
+    public void overlapAreaBreaksTiesBeforeTravel()
+    {
+        SearchHistory history = new SearchHistory();
+        CameraCandidateStats narrow = history.getOrCreate(0, 1000, 500);
+        narrow.samples = 2; narrow.overlapTotal = 4; narrow.overlapAreaTotal = 100;
+        narrow.gapTotal = 0; narrow.centerTotal = 100; narrow.mouseTotal = 100;
+        CameraCandidateStats broad = history.getOrCreate(16, 1000, 500);
+        broad.samples = 2; broad.overlapTotal = 4; broad.overlapAreaTotal = 200;
+        broad.gapTotal = 0; broad.centerTotal = 1000; broad.mouseTotal = 1000;
+        assertEquals(broad, history.best());
     }
 }

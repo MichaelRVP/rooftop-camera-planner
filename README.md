@@ -7,16 +7,20 @@ layout for all nine OSRS rooftop Agility courses.
 
 - Detects the current rooftop course and its ordered obstacles.
 - Highlights live obstacle clickboxes and the expected next obstacle.
-- Records each obstacle's real screen-space clickbox during complete laps.
-- Scores the cyclic route by maximizing consecutive clickbox overlaps, then
-  minimizing the remaining gaps and cursor travel.
+- Extracts a guaranteed-clickable inner rectangle from each obstacle's real,
+  possibly irregular screen-space click shape during complete laps.
+- Scores the cyclic route by maximizing consecutive clickbox overlaps, shared
+  overlap area, then minimizing the remaining gaps and cursor travel.
 - Persists every tested yaw, pitch, and zoom candidate for each course.
-- Runs a coarse-to-fine neighborhood search, requiring two complete laps per
-  candidate and testing diagonal interactions at the final resolution.
+- Runs a bounded global yaw scout before a coarse-to-fine neighborhood search,
+  requiring two complete laps per candidate and testing diagonal interactions
+  at the final resolution.
 - Learns the active client's reachable pitch and zoom limits when repeated
   adjustment input produces no movement, then replans without user setup.
-- Draws the best learned clickboxes as static ghost markers so the cursor can
-  be positioned before the next obstacle becomes clickable.
+- Draws the best learned clickboxes as static ghost markers only while the
+  camera matches their learned view, so stale markers cannot misdirect clicks.
+- Excludes incidental actions such as collecting Marks of Grace from route
+  mouse-travel evidence.
 - Displays simple rotate, tilt, and zoom guidance to return to that view.
 - Keeps every learned profile local in RuneLite configuration.
 

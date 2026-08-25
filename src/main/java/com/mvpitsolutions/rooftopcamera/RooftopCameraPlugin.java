@@ -177,6 +177,11 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
                 }
             }
         }
+        else if (course != null)
+        {
+            // Ground items such as Marks of Grace are useful actions, but not route transitions.
+            lapOptimizer.pauseMouseSampling();
+        }
     }
 
     @Subscribe public void onGameObjectSpawned(GameObjectSpawned event) { onTileObject(null, event.getGameObject()); }
@@ -206,8 +211,19 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
     int getTrackedObstacleCount() { return tracked.size(); }
     List<Rectangle> getScaledBestMarkers()
     {
-        return bestMarkerLayout == null ? Collections.emptyList()
+        return bestMarkerLayout == null || !bestMarkerLayout.verifiedInnerRectangles
+            || bestTravelProfile == null || !cameraAligned(
+            client.getCameraYawTarget(), client.getCameraPitchTarget(), client.get3dZoom(), bestTravelProfile)
+            ? Collections.emptyList()
             : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
+    }
+
+    static boolean cameraAligned(int yaw, int pitch, int zoom, TravelProfile profile)
+    {
+        return profile != null
+            && Math.abs(signedYawDelta(yaw, profile.yaw)) <= 8
+            && Math.abs(pitch - profile.pitch) <= 4
+            && Math.abs(zoom - profile.zoom) <= 8;
     }
     int getTestedCameraCount() { return searchHistory.testedCount(); }
     CameraTarget getSearchTarget()
@@ -361,23 +377,18 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
 
     private Rectangle clickboxFor(int objectId, int mouseX, int mouseY)
     {
-        Rectangle nearest = null;
-        double nearestDistance = Double.MAX_VALUE;
         for (TileObject object : tracked.keySet())
         {
             if (object.getId() != objectId) continue;
             Shape shape = object.getClickbox();
             if (shape == null || shape.getBounds().isEmpty()) continue;
-            Rectangle bounds = shape.getBounds();
-            if (shape.contains(mouseX, mouseY)) return new Rectangle(bounds);
-            double distance = Math.hypot(bounds.getCenterX() - mouseX, bounds.getCenterY() - mouseY);
-            if (distance < nearestDistance)
+            if (shape.contains(mouseX, mouseY))
             {
-                nearestDistance = distance;
-                nearest = new Rectangle(bounds);
+                return ClickboxNormalizer.largestSafeRectangle(shape,
+                    client.getCanvasWidth(), client.getCanvasHeight());
             }
         }
-        return nearest;
+        return null;
     }
 
     private void learnFrom(LapOptimizer.CompletedLap lap)
@@ -413,6 +424,7 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
             bestTravelProfile.pitch, bestTravelProfile.zoom);
         candidate.samples = Math.max(2, bestTravelProfile.samples);
         candidate.overlapTotal = bestTravelProfile.overlappingTransitions * candidate.samples;
+        candidate.overlapAreaTotal = bestTravelProfile.overlapArea * candidate.samples;
         candidate.gapTotal = bestTravelProfile.markerGap * candidate.samples;
         candidate.centerTotal = bestTravelProfile.markerTravel * candidate.samples;
         candidate.mouseTotal = bestTravelProfile.observedMouseTravel * candidate.samples;
@@ -425,7 +437,7 @@ public class RooftopCameraPlugin extends Plugin implements MouseListener, MouseW
         CameraCandidateStats best = searchHistory.best();
         if (best == null) return;
         bestTravelProfile = new TravelProfile(best.yaw, best.pitch, best.zoom, best.averageCenter(),
-            best.averageGap(), best.averageOverlap(), best.averageMouse(), best.samples);
+            best.averageGap(), best.averageOverlap(), best.averageOverlapArea(), best.averageMouse(), best.samples);
         bestMarkerLayout = best.representativeLayout;
         configManager.setConfiguration(RooftopCameraConfig.GROUP, travelProfileKey(course), bestTravelProfile.serialize());
         if (bestMarkerLayout != null)

@@ -21,6 +21,15 @@ final class SearchHistory
 
     Collection<CameraCandidateStats> all() { return candidates.values(); }
 
+    CameraCandidateStats firstEligible()
+    {
+        for (CameraCandidateStats candidate : candidates.values())
+        {
+            if (candidate.isEligible()) return candidate;
+        }
+        return null;
+    }
+
     CameraCandidateStats best()
     {
         CameraCandidateStats best = null;
@@ -46,7 +55,8 @@ final class SearchHistory
             String layout = c.representativeLayout == null ? "" : Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(c.representativeLayout.serialize().getBytes(StandardCharsets.UTF_8));
             entries.add(c.yaw + "," + c.pitch + "," + c.zoom + "," + c.samples + ","
-                + c.overlapTotal + "," + c.gapTotal + "," + c.centerTotal + "," + c.mouseTotal + "," + layout);
+                + c.overlapTotal + "," + c.overlapAreaTotal + "," + c.gapTotal + ","
+                + c.centerTotal + "," + c.mouseTotal + "," + layout);
         }
         return String.join("~", entries);
     }
@@ -60,16 +70,18 @@ final class SearchHistory
             for (String entry : value.split("~"))
             {
                 String[] f = entry.split(",", -1);
-                if (f.length != 9) continue;
+                if (f.length != 9 && f.length != 10) continue;
                 CameraCandidateStats c = history.getOrCreate(Integer.parseInt(f[0]), Integer.parseInt(f[1]), Integer.parseInt(f[2]));
                 c.samples = Integer.parseInt(f[3]);
                 c.overlapTotal = Double.parseDouble(f[4]);
-                c.gapTotal = Double.parseDouble(f[5]);
-                c.centerTotal = Double.parseDouble(f[6]);
-                c.mouseTotal = Double.parseDouble(f[7]);
-                if (!f[8].isEmpty())
+                int offset = f.length == 10 ? 1 : 0;
+                c.overlapAreaTotal = offset == 1 ? Double.parseDouble(f[5]) : 0;
+                c.gapTotal = Double.parseDouble(f[5 + offset]);
+                c.centerTotal = Double.parseDouble(f[6 + offset]);
+                c.mouseTotal = Double.parseDouble(f[7 + offset]);
+                if (!f[8 + offset].isEmpty())
                 {
-                    String decoded = new String(Base64.getUrlDecoder().decode(f[8]), StandardCharsets.UTF_8);
+                    String decoded = new String(Base64.getUrlDecoder().decode(f[8 + offset]), StandardCharsets.UTF_8);
                     c.representativeLayout = ScreenMarkerLayout.parse(decoded);
                 }
             }

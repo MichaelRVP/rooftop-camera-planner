@@ -8,11 +8,12 @@ final class TravelProfile
     final double markerTravel;
     final double markerGap;
     final double overlappingTransitions;
+    final double overlapArea;
     final double observedMouseTravel;
     final int samples;
 
     TravelProfile(int yaw, int pitch, int zoom, double markerTravel, double markerGap,
-        double overlappingTransitions, double observedMouseTravel, int samples)
+        double overlappingTransitions, double overlapArea, double observedMouseTravel, int samples)
     {
         this.yaw = yaw;
         this.pitch = pitch;
@@ -20,6 +21,7 @@ final class TravelProfile
         this.markerTravel = markerTravel;
         this.markerGap = markerGap;
         this.overlappingTransitions = overlappingTransitions;
+        this.overlapArea = overlapArea;
         this.observedMouseTravel = observedMouseTravel;
         this.samples = samples;
     }
@@ -27,7 +29,7 @@ final class TravelProfile
     String serialize()
     {
         return yaw + "," + pitch + "," + zoom + "," + markerTravel + "," + markerGap + ","
-            + overlappingTransitions + "," + observedMouseTravel + "," + samples;
+            + overlappingTransitions + "," + overlapArea + "," + observedMouseTravel + "," + samples;
     }
 
     static TravelProfile parse(String value)
@@ -39,13 +41,15 @@ final class TravelProfile
         try
         {
             String[] fields = value.split(",");
-            if (fields.length != 8)
+            if (fields.length != 8 && fields.length != 9)
             {
                 return null;
             }
+            int offset = fields.length == 9 ? 1 : 0;
             return new TravelProfile(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]),
                 Integer.parseInt(fields[2]), Double.parseDouble(fields[3]), Double.parseDouble(fields[4]),
-                Double.parseDouble(fields[5]), Double.parseDouble(fields[6]), Integer.parseInt(fields[7]));
+                Double.parseDouble(fields[5]), offset == 1 ? Double.parseDouble(fields[6]) : 0,
+                Double.parseDouble(fields[6 + offset]), Integer.parseInt(fields[7 + offset]));
         }
         catch (NumberFormatException ignored)
         {
