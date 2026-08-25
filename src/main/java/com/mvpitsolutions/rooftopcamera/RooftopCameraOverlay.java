@@ -6,7 +6,6 @@ import java.awt.Color;
 import javax.inject.Inject;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.components.LineComponent;
-import net.runelite.client.ui.overlay.components.TitleComponent;
 
 final class RooftopCameraOverlay extends OverlayPanel
 {
@@ -30,8 +29,6 @@ final class RooftopCameraOverlay extends OverlayPanel
         {
             return null;
         }
-        panelComponent.getChildren().add(TitleComponent.builder().text("Rooftop Camera Planner").build());
-        panelComponent.getChildren().add(LineComponent.builder().left("Course").right(course.displayName).build());
         if (config.showDiagnostics())
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Obstacles found").right(
@@ -40,8 +37,6 @@ final class RooftopCameraOverlay extends OverlayPanel
                 Integer.toString(plugin.getVisibleObstacleCount())).build());
         }
         int next = plugin.getNextObstacleNumber();
-        panelComponent.getChildren().add(LineComponent.builder().left("Next target").right(
-            next < 0 ? "Acquiring" : "Obstacle " + next).build());
         if (config.showDiagnostics())
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Live visibility").right(
@@ -51,6 +46,9 @@ final class RooftopCameraOverlay extends OverlayPanel
         if (guidance != null)
         {
             radar.setState(guidance);
+            LapOptimizer optimizer = plugin.getLapOptimizer();
+            radar.setRouteState(course.displayName, next, optimizer.getProgress(),
+                course.obstacles.length, optimizer.isCurrentLapStableSoFar());
             panelComponent.getChildren().add(radar);
         }
         else
@@ -69,14 +67,6 @@ final class RooftopCameraOverlay extends OverlayPanel
                 panelComponent.getChildren().add(LineComponent.builder().left("Target evidence").right(
                     plugin.getSearchTargetSamples() + " valid laps").build());
             }
-        }
-        panelComponent.getChildren().add(LineComponent.builder().left("Lap progress").right(
-            optimizer.getProgress() + " / " + course.obstacles.length).build());
-        if (!optimizer.isCurrentLapStableSoFar())
-        {
-            panelComponent.getChildren().add(LineComponent.builder()
-                .left("Camera changed: next lap will count")
-                .leftColor(new Color(255, 190, 70)).build());
         }
         if (config.showDiagnostics())
         {
@@ -99,12 +89,12 @@ final class RooftopCameraOverlay extends OverlayPanel
         TravelProfile profile = plugin.getBestTravelProfile();
         if (profile != null)
         {
-            panelComponent.getChildren().add(LineComponent.builder().left("Best overlap").right(
-                String.format("%.1f / %d", profile.overlappingTransitions, course.obstacles.length)).build());
-            panelComponent.getChildren().add(LineComponent.builder().left("Best gaps").right(
-                String.format("%.0f px (%d laps)", profile.markerGap, profile.samples)).build());
             if (config.showDiagnostics())
             {
+                panelComponent.getChildren().add(LineComponent.builder().left("Best overlap").right(
+                    String.format("%.1f / %d", profile.overlappingTransitions, course.obstacles.length)).build());
+                panelComponent.getChildren().add(LineComponent.builder().left("Best gaps").right(
+                    String.format("%.0f px (%d laps)", profile.markerGap, profile.samples)).build());
                 panelComponent.getChildren().add(LineComponent.builder().left("Shared overlap").right(
                     String.format("%.0f px^2", profile.overlapArea)).build());
                 panelComponent.getChildren().add(LineComponent.builder().left("Observed mouse").right(

@@ -22,12 +22,27 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
 
     private final Rectangle bounds = new Rectangle();
     private Point preferredLocation = new Point();
-    private Dimension preferredSize = new Dimension(269, 154);
+    private Dimension preferredSize = new Dimension(269, 190);
     private CameraGuidanceState state;
+    private String courseName = "Rooftop course";
+    private int nextObstacle = -1;
+    private int routeProgress;
+    private int routeTotal;
+    private boolean stableLap = true;
 
     void setState(CameraGuidanceState state)
     {
         this.state = state;
+    }
+
+    void setRouteState(String courseName, int nextObstacle, int routeProgress,
+        int routeTotal, boolean stableLap)
+    {
+        this.courseName = courseName;
+        this.nextObstacle = nextObstacle;
+        this.routeProgress = routeProgress;
+        this.routeTotal = routeTotal;
+        this.stableLap = stableLap;
     }
 
     @Override
@@ -38,7 +53,7 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
         int x = preferredLocation.x;
         int y = preferredLocation.y;
         int width = Math.max(240, preferredSize.width);
-        int height = 154;
+        int height = 190;
         bounds.setBounds(x, y, width, height);
 
         Graphics2D g = (Graphics2D) graphics.create();
@@ -48,18 +63,30 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
         g.setColor(SURFACE_EDGE);
         g.drawRoundRect(x, y, width - 1, height - 1, 8, 8);
 
-        g.setFont(graphics.getFont().deriveFont(Font.BOLD, 11f));
+        g.setFont(graphics.getFont().deriveFont(Font.BOLD, 12f));
+        g.setColor(Color.WHITE);
+        g.drawString(courseName.toUpperCase(), x + 12, y + 18);
+        String nextLabel = nextObstacle < 0 ? "ACQUIRING" : "NEXT  " + nextObstacle;
+        int nextWidth = g.getFontMetrics().stringWidth(nextLabel);
+        g.setColor(GOLD);
+        g.drawString(nextLabel, x + width - nextWidth - 12, y + 18);
+
+        g.setFont(graphics.getFont().deriveFont(Font.BOLD, 10f));
         g.setColor(state.isAligned() ? AQUA : Color.WHITE);
-        g.drawString(state.isAligned() ? "CAMERA LOCKED" : "CAMERA ALIGNMENT", x + 12, y + 18);
+        String cameraStatus = state.isAligned() ? "CAMERA LOCKED" : "ALIGN CAMERA";
+        if (!stableLap) cameraStatus = "CAMERA CHANGED - NEXT LAP COUNTS";
+        g.drawString(cameraStatus, x + 12, y + 34);
         g.setFont(graphics.getFont().deriveFont(Font.PLAIN, 9f));
         g.setColor(MUTED);
-        g.drawString(state.calibration ? "Hold the target for one complete lap" : "Return to the learned view",
-            x + 12, y + 31);
+        String lapLabel = "LAP  " + routeProgress + " / " + routeTotal;
+        int lapWidth = g.getFontMetrics().stringWidth(lapLabel);
+        g.drawString(lapLabel, x + width - lapWidth - 12, y + 34);
 
-        drawRadar(g, x + 58, y + 78, 34);
-        drawZoom(g, x + 113, y + 48, 14, 61);
-        drawReadout(g, x + 145, y + 52);
-        drawProgress(g, x + 12, y + 132, width - 24);
+        drawRadar(g, x + 58, y + 87, 34);
+        drawZoom(g, x + 113, y + 57, 14, 61);
+        drawReadout(g, x + 145, y + 61);
+        drawRouteProgress(g, x + 12, y + 137, width - 24);
+        drawCalibrationProgress(g, x + 12, y + 166, width - 24);
         g.dispose();
         return new Dimension(width, height);
     }
@@ -118,23 +145,40 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
         g.drawString(label, x + 13, y);
     }
 
-    private void drawProgress(Graphics2D g, int x, int y, int width)
+    private void drawRouteProgress(Graphics2D g, int x, int y, int width)
     {
+        g.setFont(g.getFont().deriveFont(Font.BOLD, 8f));
+        g.setColor(MUTED);
+        g.drawString("ROUTE", x, y);
+        int barY = y + 6;
+        g.setColor(TRACK);
+        g.fillRoundRect(x, barY, width, 6, 6, 6);
+        int filled = routeTotal <= 0 ? 0 : (int) Math.round(width
+            * Math.min(routeProgress, routeTotal) / (double) routeTotal);
+        if (filled > 0)
+        {
+            g.setColor(AQUA);
+            g.fillRoundRect(x, barY, filled, 6, 6, 6);
+        }
+    }
+
+    private void drawCalibrationProgress(Graphics2D g, int x, int y, int width)
+    {
+        g.setFont(g.getFont().deriveFont(Font.BOLD, 8f));
+        g.setColor(MUTED);
+        String label = state.calibration
+            ? "CALIBRATION  " + Math.min(state.completedLaps, CameraSearchPlanner.MAX_VALID_LAPS)
+                + " / " + CameraSearchPlanner.MAX_VALID_LAPS
+            : "CALIBRATION COMPLETE";
+        g.drawString(label, x, y);
         int gap = 3;
         int segmentWidth = (width - (CameraSearchPlanner.MAX_VALID_LAPS - 1) * gap)
             / CameraSearchPlanner.MAX_VALID_LAPS;
         for (int i = 0; i < CameraSearchPlanner.MAX_VALID_LAPS; i++)
         {
-            g.setColor(i < state.completedLaps ? AQUA : TRACK);
-            g.fillRoundRect(x + i * (segmentWidth + gap), y, segmentWidth, 7, 4, 4);
+            g.setColor(!state.calibration || i < state.completedLaps ? AQUA : TRACK);
+            g.fillRoundRect(x + i * (segmentWidth + gap), y + 6, segmentWidth, 7, 4, 4);
         }
-        g.setFont(g.getFont().deriveFont(Font.PLAIN, 9f));
-        g.setColor(MUTED);
-        String label = state.calibration
-            ? Math.min(state.completedLaps, CameraSearchPlanner.MAX_VALID_LAPS) + " / "
-                + CameraSearchPlanner.MAX_VALID_LAPS + " calibration laps"
-            : "Calibration complete";
-        g.drawString(label, x, y + 18);
     }
 
     private static int scale(int value, int range, int output)
