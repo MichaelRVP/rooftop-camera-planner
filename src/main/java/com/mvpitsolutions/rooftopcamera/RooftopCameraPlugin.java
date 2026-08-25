@@ -18,7 +18,6 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.ToIntFunction;
 import javax.inject.Inject;
 import net.runelite.api.Client;
-import net.runelite.api.Constants;
 import net.runelite.api.GameState;
 import net.runelite.api.Tile;
 import net.runelite.api.TileObject;
@@ -66,7 +65,6 @@ public class RooftopCameraPlugin extends Plugin
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
     private int ticksSinceScan;
-    private boolean zoomStateRepaired;
     private final AWTEventListener zoomDiagnostic = event ->
     {
         if (event instanceof MouseWheelEvent)
@@ -105,7 +103,6 @@ public class RooftopCameraPlugin extends Plugin
     @Subscribe
     public void onGameTick(GameTick event)
     {
-        repairInvalidZoomState();
         RooftopCourse detected = detectCourse();
         if (detected != course)
         {
@@ -214,23 +211,7 @@ public class RooftopCameraPlugin extends Plugin
         if (event.getGameState() == GameState.LOADING || event.getGameState() == GameState.LOGIN_SCREEN)
         {
             tracked.clear();
-            zoomStateRepaired = false;
         }
-    }
-
-    private void repairInvalidZoomState()
-    {
-        if (zoomStateRepaired || client.getGameState() != GameState.LOGGED_IN)
-        {
-            return;
-        }
-        int zoom = client.getVarcIntValue(74);
-        if (zoom <= 0)
-        {
-            client.runScript(42, Constants.CLIENT_DEFAULT_ZOOM, Constants.CLIENT_DEFAULT_ZOOM);
-            LOG.warn("Repaired invalid RuneLite zoom state {} to {}", zoom, Constants.CLIENT_DEFAULT_ZOOM);
-        }
-        zoomStateRepaired = true;
     }
 
     RooftopCourse getCourse() { return course; }
@@ -534,6 +515,5 @@ public class RooftopCameraPlugin extends Plugin
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;
         ticksSinceScan = 0;
-        zoomStateRepaired = false;
     }
 }
