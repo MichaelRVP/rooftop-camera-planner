@@ -59,6 +59,8 @@ public class RooftopCameraPlugin extends Plugin
     private final LapOptimizer lapOptimizer = new LapOptimizer();
     private final CameraSearchPlanner searchPlanner = new CameraSearchPlanner();
     private final CameraReachabilityTracker reachabilityTracker = new CameraReachabilityTracker();
+    private final AutomaticCameraShiftDetector automaticCameraShiftDetector =
+        new AutomaticCameraShiftDetector();
     private RooftopCourse course;
     private TravelProfile bestTravelProfile;
     private ScreenMarkerLayout bestMarkerLayout;
@@ -147,6 +149,7 @@ public class RooftopCameraPlugin extends Plugin
             cameraBounds = CameraBounds.parse(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, cameraBoundsKey()));
             reachabilityTracker.reset();
+            automaticCameraShiftDetector.reset();
             bootstrapLegacyProfile();
             applyBestCandidate();
             scanScene();
@@ -183,6 +186,13 @@ public class RooftopCameraPlugin extends Plugin
             reachabilityTracker.cameraDrag(client.getCameraYawTarget());
         }
         CameraTarget observedTarget = course == null ? null : getSearchTarget();
+        if (course != null && observedTarget != null && automaticCameraShiftDetector.observe(
+            client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom(),
+            wheelAdjusted || dragAdjusted, lapOptimizer.isActive()))
+        {
+            rejectCameraTarget(observedTarget);
+            observedTarget = getSearchTarget();
+        }
         boolean boundsChanged = course != null && reachabilityTracker.observe(observedTarget,
             client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom(), cameraBounds);
         boolean targetUnreachable = course != null && reachabilityTracker.consumeTargetUnreachable();
@@ -196,15 +206,7 @@ public class RooftopCameraPlugin extends Plugin
         }
         if (targetUnreachable && observedTarget != null)
         {
-            searchHistory.getOrCreate(observedTarget.yaw, observedTarget.pitch, observedTarget.zoom)
-                .rejectAsUnreachable();
-            configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
-                searchHistory.serialize());
-            lapOptimizer.cameraTargetRejected();
-            if (!lapOptimizer.isActive())
-            {
-                activeSearchTarget = null;
-            }
+            rejectCameraTarget(observedTarget);
         }
         if (course == null || !lapOptimizer.isActive())
         {
@@ -516,6 +518,17 @@ public class RooftopCameraPlugin extends Plugin
         return Math.round((float) value / step) * step;
     }
 
+    private void rejectCameraTarget(CameraTarget target)
+    {
+        searchHistory.getOrCreate(target.yaw, target.pitch, target.zoom).rejectAsUnreachable();
+        configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
+            searchHistory.serialize());
+        lapOptimizer.cameraTargetRejected();
+        activeSearchTarget = null;
+        reachabilityTracker.reset();
+        automaticCameraShiftDetector.reset();
+    }
+
     private CameraTarget currentCameraTarget()
     {
         return new CameraTarget(CameraSearchPlanner.normalizeYaw(quantize(client.getCameraYawTarget(), 16)),
@@ -602,5 +615,7 @@ public class RooftopCameraPlugin extends Plugin
         ticksSinceScan = 0;
         wheelInputPending.set(false);
         cameraDragPending.set(false);
+        reachabilityTracker.reset();
+        automaticCameraShiftDetector.reset();
     }
 }
