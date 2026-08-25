@@ -42,8 +42,24 @@ final class RooftopCameraOverlay extends OverlayPanel
         panelComponent.getChildren().add(LineComponent.builder().left(plugin.cameraGuidance())
             .leftColor(new Color(74, 220, 200)).build());
         LapOptimizer optimizer = plugin.getLapOptimizer();
+        panelComponent.getChildren().add(LineComponent.builder().left("Cameras verified").right(
+            Integer.toString(plugin.getTestedCameraCount())).build());
+        CameraTarget target = plugin.getSearchTarget();
+        if (target != null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder().left("Search target").right(
+                plugin.nextExperiment()).build());
+            panelComponent.getChildren().add(LineComponent.builder().left("Target evidence").right(
+                plugin.getSearchTargetSamples() + " / 2 laps").build());
+        }
         panelComponent.getChildren().add(LineComponent.builder().left("Lap progress").right(
             optimizer.getProgress() + " / " + course.obstacles.length).build());
+        if (!optimizer.isCurrentLapStableSoFar())
+        {
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left("Camera changed: next lap will count")
+                .leftColor(new Color(255, 190, 70)).build());
+        }
         panelComponent.getChildren().add(LineComponent.builder().left("Mouse travel").right(
             String.format("%.0f px", optimizer.getCurrentTravel())).build());
         if (!Double.isNaN(optimizer.getLastTravel()))
@@ -63,15 +79,18 @@ final class RooftopCameraOverlay extends OverlayPanel
         if (profile != null)
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Best overlap").right(
-                profile.overlappingTransitions + " / " + course.obstacles.length).build());
+                String.format("%.1f / %d", profile.overlappingTransitions, course.obstacles.length)).build());
             panelComponent.getChildren().add(LineComponent.builder().left("Best gaps").right(
                 String.format("%.0f px (%d laps)", profile.markerGap, profile.samples)).build());
             panelComponent.getChildren().add(LineComponent.builder().left("Observed mouse").right(
                 String.format("%.0f px", profile.observedMouseTravel)).build());
             panelComponent.getChildren().add(LineComponent.builder().left("Best camera").right(
                 "Y " + profile.yaw + "  P " + profile.pitch + "  Z " + profile.zoom).build());
-            panelComponent.getChildren().add(LineComponent.builder().left("Next experiment").right(
-                plugin.nextExperiment()).build());
+            if (target == null)
+            {
+                panelComponent.getChildren().add(LineComponent.builder().left("Search status").right(
+                    "Neighborhood verified").leftColor(new Color(74, 220, 200)).build());
+            }
         }
         else if (plugin.getTrackedObstacleCount() == 0)
         {

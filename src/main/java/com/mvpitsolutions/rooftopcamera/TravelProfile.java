@@ -7,12 +7,12 @@ final class TravelProfile
     final int zoom;
     final double markerTravel;
     final double markerGap;
-    final int overlappingTransitions;
+    final double overlappingTransitions;
     final double observedMouseTravel;
     final int samples;
 
     TravelProfile(int yaw, int pitch, int zoom, double markerTravel, double markerGap,
-        int overlappingTransitions, double observedMouseTravel, int samples)
+        double overlappingTransitions, double observedMouseTravel, int samples)
     {
         this.yaw = yaw;
         this.pitch = pitch;
@@ -45,7 +45,7 @@ final class TravelProfile
             }
             return new TravelProfile(Integer.parseInt(fields[0]), Integer.parseInt(fields[1]),
                 Integer.parseInt(fields[2]), Double.parseDouble(fields[3]), Double.parseDouble(fields[4]),
-                Integer.parseInt(fields[5]), Double.parseDouble(fields[6]), Integer.parseInt(fields[7]));
+                Double.parseDouble(fields[5]), Double.parseDouble(fields[6]), Integer.parseInt(fields[7]));
         }
         catch (NumberFormatException ignored)
         {

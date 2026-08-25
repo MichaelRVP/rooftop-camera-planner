@@ -131,6 +131,10 @@ final class LapOptimizer
     double getLastMarkerGap() { return lastMarkerGap; }
     int getLastOverlappingTransitions() { return lastOverlappingTransitions; }
     boolean wasLastLapStable() { return lastLapStable; }
+    boolean isCurrentLapStableSoFar()
+    {
+        return !active || (maxYawDelta <= 24 && maxPitchDelta <= 12 && maxZoomDelta <= 32);
+    }
     int getCompletedLaps() { return completedLaps; }
 
     private void beginLap(int mouseX, int mouseY, int yaw, int pitch, int zoom, Rectangle clickbox)

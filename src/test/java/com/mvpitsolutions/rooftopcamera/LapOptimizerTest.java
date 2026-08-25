@@ -59,6 +59,7 @@ public class LapOptimizerTest
         optimizer.reset(2);
         optimizer.obstacleClicked(0, 0, 0, 100, 200, 500, marker(0, 0));
         optimizer.obstacleClicked(1, 20, 0, 150, 200, 500, marker(20, 0));
+        assertFalse(optimizer.isCurrentLapStableSoFar());
         LapOptimizer.CompletedLap lap = optimizer.obstacleClicked(0, 0, 0, 150, 200, 500, marker(0, 0));
         assertFalse(lap.stableCamera);
     }

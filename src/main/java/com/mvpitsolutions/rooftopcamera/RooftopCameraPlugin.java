@@ -6,7 +6,6 @@ import java.awt.Shape;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,11 +48,12 @@ public class RooftopCameraPlugin extends Plugin
     @Inject private RooftopGhostOverlay ghostOverlay;
 
     private final Map<TileObject, Integer> tracked = new ConcurrentHashMap<>();
-    private final Map<String, List<LapOptimizer.CompletedLap>> travelSamples = new HashMap<>();
     private final LapOptimizer lapOptimizer = new LapOptimizer();
+    private final CameraSearchPlanner searchPlanner = new CameraSearchPlanner();
     private RooftopCourse course;
     private TravelProfile bestTravelProfile;
     private ScreenMarkerLayout bestMarkerLayout;
+    private SearchHistory searchHistory = new SearchHistory();
     private double currentScore;
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
@@ -92,11 +92,14 @@ public class RooftopCameraPlugin extends Plugin
             tracked.clear();
             lastClickedObstacle = -1;
             lapOptimizer.reset(course == null ? 0 : course.obstacles.length);
-            travelSamples.clear();
             bestTravelProfile = course == null ? null : TravelProfile.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, travelProfileKey(course)));
             bestMarkerLayout = course == null ? null : ScreenMarkerLayout.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course)));
+            searchHistory = course == null ? new SearchHistory() : SearchHistory.parse(
+                configManager.getConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course)));
+            bootstrapLegacyProfile();
+            applyBestCandidate();
             scanScene();
         }
         if (course == null)
@@ -186,6 +189,18 @@ public class RooftopCameraPlugin extends Plugin
         return bestMarkerLayout == null ? Collections.emptyList()
             : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
     }
+    int getTestedCameraCount() { return searchHistory.testedCount(); }
+    CameraTarget getSearchTarget()
+    {
+        if (course == null) return null;
+        return searchPlanner.nextTarget(searchHistory, searchHistory.best(), currentCameraTarget());
+    }
+    int getSearchTargetSamples()
+    {
+        CameraTarget target = getSearchTarget();
+        CameraCandidateStats candidate = target == null ? null : searchHistory.get(target);
+        return candidate == null ? 0 : candidate.samples;
+    }
     int getNextObstacleId() { return course == null ? -1 : course.nextAfter(lastClickedObstacle); }
     int getNextObstacleNumber()
     {
@@ -195,45 +210,29 @@ public class RooftopCameraPlugin extends Plugin
 
     String cameraGuidance()
     {
-        if (bestTravelProfile == null)
+        CameraTarget target = getSearchTarget();
+        if (target == null)
         {
-            return lapOptimizer.isActive()
-                ? "Learning this lap - keep the camera fixed"
-                : "Complete two laps at one camera position";
+            return "Local camera neighborhood verified";
         }
-        int yawDelta = signedYawDelta(client.getCameraYawTarget(), bestTravelProfile.yaw);
-        int pitchDelta = bestTravelProfile.pitch - client.getCameraPitchTarget();
-        int zoomDelta = bestTravelProfile.zoom - client.get3dZoom();
-        if (Math.abs(yawDelta) <= 12 && Math.abs(pitchDelta) <= 8 && Math.abs(zoomDelta) <= 16)
+        int yawDelta = signedYawDelta(client.getCameraYawTarget(), target.yaw);
+        int pitchDelta = target.pitch - client.getCameraPitchTarget();
+        int zoomDelta = target.zoom - client.get3dZoom();
+        if (Math.abs(yawDelta) <= 8 && Math.abs(pitchDelta) <= 4 && Math.abs(zoomDelta) <= 8)
         {
-            return "Best measured full-lap camera";
+            return "Target locked - hold camera for the full lap";
         }
-        String turn = Math.abs(yawDelta) <= 12 ? "hold yaw" : yawDelta > 0 ? "rotate right" : "rotate left";
-        String tilt = Math.abs(pitchDelta) <= 8 ? "hold pitch" : pitchDelta > 0 ? "tilt up" : "tilt down";
-        String zoom = Math.abs(zoomDelta) <= 16 ? "hold zoom" : zoomDelta > 0 ? "zoom in" : "zoom out";
+        String turn = Math.abs(yawDelta) <= 8 ? "hold yaw" : yawDelta > 0 ? "rotate right" : "rotate left";
+        String tilt = Math.abs(pitchDelta) <= 4 ? "hold pitch" : pitchDelta > 0 ? "tilt up" : "tilt down";
+        String zoom = Math.abs(zoomDelta) <= 8 ? "hold zoom" : zoomDelta > 0 ? "zoom in" : "zoom out";
         return turn + " | " + tilt + " | " + zoom;
     }
 
     String nextExperiment()
     {
-        if (bestTravelProfile == null)
-        {
-            return "Establishing a two-lap baseline";
-        }
-        int phase = (lapOptimizer.getCompletedLaps() / 2) % 6;
-        int round = Math.min(3, lapOptimizer.getCompletedLaps() / 12);
-        int yawStep = Math.max(16, 128 >> round);
-        int pitchStep = Math.max(8, 32 >> round);
-        int zoomStep = Math.max(16, 64 >> round);
-        switch (phase)
-        {
-            case 0: return "Test yaw +" + yawStep;
-            case 1: return "Test yaw -" + yawStep;
-            case 2: return "Test pitch +" + pitchStep;
-            case 3: return "Test pitch -" + pitchStep;
-            case 4: return "Test zoom +" + zoomStep;
-            default: return "Test zoom -" + zoomStep;
-        }
+        CameraTarget target = getSearchTarget();
+        return target == null ? "Search complete"
+            : "Y " + target.yaw + "  P " + target.pitch + "  Z " + target.zoom;
     }
 
     static int signedYawDelta(int current, int target)
@@ -347,48 +346,13 @@ public class RooftopCameraPlugin extends Plugin
         {
             return;
         }
-        int yaw = quantize(lap.yaw, 16);
+        int yaw = CameraSearchPlanner.normalizeYaw(quantize(lap.yaw, 16));
         int pitch = quantize(lap.pitch, 8);
         int zoom = quantize(lap.zoom, 16);
-        String key = yaw + ":" + pitch + ":" + zoom;
-        List<LapOptimizer.CompletedLap> samples = travelSamples.computeIfAbsent(key, ignored -> new ArrayList<>());
-        samples.add(lap);
-        if (samples.size() < 2)
-        {
-            return;
-        }
-        List<Double> centerValues = new ArrayList<>();
-        List<Double> gapValues = new ArrayList<>();
-        List<Double> mouseValues = new ArrayList<>();
-        List<Integer> overlapValues = new ArrayList<>();
-        for (LapOptimizer.CompletedLap sample : samples)
-        {
-            centerValues.add(sample.markerTravel);
-            gapValues.add(sample.markerGap);
-            mouseValues.add(sample.mouseTravel);
-            overlapValues.add(sample.overlappingTransitions);
-        }
-        double medianCenter = median(centerValues);
-        double medianGap = median(gapValues);
-        double medianMouse = median(mouseValues);
-        Collections.sort(overlapValues);
-        int medianOverlaps = overlapValues.get((overlapValues.size() - 1) / 2);
-        boolean better = bestTravelProfile == null
-            || medianOverlaps > bestTravelProfile.overlappingTransitions
-            || (medianOverlaps == bestTravelProfile.overlappingTransitions && medianGap < bestTravelProfile.markerGap)
-            || (medianOverlaps == bestTravelProfile.overlappingTransitions
-                && Double.compare(medianGap, bestTravelProfile.markerGap) == 0
-                && medianCenter < bestTravelProfile.markerTravel);
-        if (better)
-        {
-            bestTravelProfile = new TravelProfile(yaw, pitch, zoom, medianCenter, medianGap,
-                medianOverlaps, medianMouse, samples.size());
-            bestMarkerLayout = new ScreenMarkerLayout(client.getCanvasWidth(), client.getCanvasHeight(), lap.markers);
-            configManager.setConfiguration(RooftopCameraConfig.GROUP,
-                travelProfileKey(course), bestTravelProfile.serialize());
-            configManager.setConfiguration(RooftopCameraConfig.GROUP,
-                markerLayoutKey(course), bestMarkerLayout.serialize());
-        }
+        ScreenMarkerLayout layout = new ScreenMarkerLayout(client.getCanvasWidth(), client.getCanvasHeight(), lap.markers);
+        searchHistory.getOrCreate(yaw, pitch, zoom).add(lap, layout);
+        configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course), searchHistory.serialize());
+        applyBestCandidate();
     }
 
     private static int quantize(int value, int step)
@@ -396,11 +360,38 @@ public class RooftopCameraPlugin extends Plugin
         return Math.round((float) value / step) * step;
     }
 
-    private static double median(List<Double> values)
+    private CameraTarget currentCameraTarget()
     {
-        Collections.sort(values);
-        int middle = values.size() / 2;
-        return values.size() % 2 == 1 ? values.get(middle) : (values.get(middle - 1) + values.get(middle)) / 2.0;
+        return new CameraTarget(CameraSearchPlanner.normalizeYaw(quantize(client.getCameraYawTarget(), 16)),
+            quantize(client.getCameraPitchTarget(), 8), quantize(client.get3dZoom(), 16));
+    }
+
+    private void bootstrapLegacyProfile()
+    {
+        if (bestTravelProfile == null || searchHistory.best() != null) return;
+        CameraCandidateStats candidate = searchHistory.getOrCreate(bestTravelProfile.yaw,
+            bestTravelProfile.pitch, bestTravelProfile.zoom);
+        candidate.samples = Math.max(2, bestTravelProfile.samples);
+        candidate.overlapTotal = bestTravelProfile.overlappingTransitions * candidate.samples;
+        candidate.gapTotal = bestTravelProfile.markerGap * candidate.samples;
+        candidate.centerTotal = bestTravelProfile.markerTravel * candidate.samples;
+        candidate.mouseTotal = bestTravelProfile.observedMouseTravel * candidate.samples;
+        candidate.representativeLayout = bestMarkerLayout;
+        configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course), searchHistory.serialize());
+    }
+
+    private void applyBestCandidate()
+    {
+        CameraCandidateStats best = searchHistory.best();
+        if (best == null) return;
+        bestTravelProfile = new TravelProfile(best.yaw, best.pitch, best.zoom, best.averageCenter(),
+            best.averageGap(), best.averageOverlap(), best.averageMouse(), best.samples);
+        bestMarkerLayout = best.representativeLayout;
+        configManager.setConfiguration(RooftopCameraConfig.GROUP, travelProfileKey(course), bestTravelProfile.serialize());
+        if (bestMarkerLayout != null)
+        {
+            configManager.setConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course), bestMarkerLayout.serialize());
+        }
     }
 
     private static String travelProfileKey(RooftopCourse course)
@@ -413,6 +404,11 @@ public class RooftopCameraPlugin extends Plugin
         return "markerLayout." + course.name().toLowerCase();
     }
 
+    private static String searchHistoryKey(RooftopCourse course)
+    {
+        return "searchHistory." + course.name().toLowerCase();
+    }
+
     private void reset()
     {
         tracked.clear();
@@ -420,7 +416,7 @@ public class RooftopCameraPlugin extends Plugin
         bestTravelProfile = null;
         bestMarkerLayout = null;
         lapOptimizer.reset(0);
-        travelSamples.clear();
+        searchHistory = new SearchHistory();
         currentScore = 0;
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;
