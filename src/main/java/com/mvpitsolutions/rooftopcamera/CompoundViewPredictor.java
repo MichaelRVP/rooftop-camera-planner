@@ -153,6 +153,7 @@ final class CompoundViewPredictor
     {
         return candidate != null && candidate.isEligible() && candidate.representativeLayout != null
             && candidate.representativeLayout.verifiedInnerRectangles
+            && candidate.representativeLayout.releaseValidated
             && !candidate.representativeLayout.markers.isEmpty();
     }
 

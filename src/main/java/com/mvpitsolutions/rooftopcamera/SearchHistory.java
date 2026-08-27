@@ -56,7 +56,7 @@ final class SearchHistory
                 best = candidate;
             }
         }
-        return best == null ? best() : best;
+        return best;
     }
 
     int testedCount()

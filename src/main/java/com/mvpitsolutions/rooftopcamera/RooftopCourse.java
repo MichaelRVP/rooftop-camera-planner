@@ -30,14 +30,14 @@ enum RooftopCourse
         ObjectID.ROOFTOPS_CANIFIS_JUMP_3, ObjectID.ROOFTOPS_CANIFIS_POLEVAULT,
         ObjectID.ROOFTOPS_CANIFIS_JUMP_4, ObjectID.ROOFTOPS_CANIFIS_LEAPDOWN
     }),
-    FALADOR("Falador", 12084, new int[] {
-        ObjectID.ROOFTOPS_FALADOR_WALLCLIMB, ObjectID.ROOFTOPS_FALADOR_TIGHTROPE_1,
-        ObjectID.ROOFTOPS_FALADOR_HANDHOLDS_START, ObjectID.ROOFTOPS_FALADOR_GAP_1,
-        ObjectID.ROOFTOPS_FALADOR_GAP_2, ObjectID.ROOFTOPS_FALADOR_TIGHTROPE_2,
-        ObjectID.ROOFTOPS_FALADOR_TIGHTROPE_3, ObjectID.ROOFTOPS_FALADOR_GAP_3,
-        ObjectID.ROOFTOPS_FALADOR_LEDGE_1, ObjectID.ROOFTOPS_FALADOR_LEDGE_2,
-        ObjectID.ROOFTOPS_FALADOR_LEDGE_3A, ObjectID.ROOFTOPS_FALADOR_LEDGE_3B,
-        ObjectID.ROOFTOPS_FALADOR_LEDGE_4, ObjectID.ROOFTOPS_FALADOR_EDGE
+    FALADOR("Falador", 12084, new int[][] {
+        { ObjectID.ROOFTOPS_FALADOR_WALLCLIMB }, { ObjectID.ROOFTOPS_FALADOR_TIGHTROPE_1 },
+        { ObjectID.ROOFTOPS_FALADOR_HANDHOLDS_START }, { ObjectID.ROOFTOPS_FALADOR_GAP_1 },
+        { ObjectID.ROOFTOPS_FALADOR_GAP_2 }, { ObjectID.ROOFTOPS_FALADOR_TIGHTROPE_2 },
+        { ObjectID.ROOFTOPS_FALADOR_TIGHTROPE_3 }, { ObjectID.ROOFTOPS_FALADOR_GAP_3 },
+        { ObjectID.ROOFTOPS_FALADOR_LEDGE_1 }, { ObjectID.ROOFTOPS_FALADOR_LEDGE_2 },
+        { ObjectID.ROOFTOPS_FALADOR_LEDGE_3A, ObjectID.ROOFTOPS_FALADOR_LEDGE_3B },
+        { ObjectID.ROOFTOPS_FALADOR_LEDGE_4 }, { ObjectID.ROOFTOPS_FALADOR_EDGE }
     }),
     SEERS("Seers' Village", 10806, new int[] {
         ObjectID.ROOFTOPS_SEERS_WALLCLIMB, ObjectID.ROOFTOPS_SEERS_JUMP,
@@ -67,12 +67,19 @@ enum RooftopCourse
     final String displayName;
     final int regionId;
     final int[] obstacles;
+    private final int[][] obstacleSteps;
 
     RooftopCourse(String displayName, int regionId, int[] obstacles)
     {
+        this(displayName, regionId, Arrays.stream(obstacles).mapToObj(id -> new int[] { id }).toArray(int[][]::new));
+    }
+
+    RooftopCourse(String displayName, int regionId, int[][] obstacleSteps)
+    {
         this.displayName = displayName;
         this.regionId = regionId;
-        this.obstacles = obstacles;
+        this.obstacleSteps = obstacleSteps;
+        this.obstacles = Arrays.stream(obstacleSteps).flatMapToInt(Arrays::stream).toArray();
     }
 
     boolean contains(int id)
@@ -82,9 +89,9 @@ enum RooftopCourse
 
     int indexOf(int id)
     {
-        for (int i = 0; i < obstacles.length; i++)
+        for (int i = 0; i < obstacleSteps.length; i++)
         {
-            if (obstacles[i] == id)
+            if (Arrays.stream(obstacleSteps[i]).anyMatch(value -> value == id))
             {
                 return i;
             }
@@ -95,7 +102,12 @@ enum RooftopCourse
     int nextAfter(int id)
     {
         int index = indexOf(id);
-        return obstacles[index < 0 ? 0 : (index + 1) % obstacles.length];
+        return obstacleSteps[index < 0 ? 0 : (index + 1) % obstacleSteps.length][0];
+    }
+
+    int routeSize()
+    {
+        return obstacleSteps.length;
     }
 
     static RooftopCourse forRegion(int regionId)

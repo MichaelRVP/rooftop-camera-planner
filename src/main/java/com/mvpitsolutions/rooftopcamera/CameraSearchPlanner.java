@@ -7,7 +7,11 @@ final class CameraSearchPlanner
 {
     static final int INITIAL_VALID_LAPS = 6;
     static final int MAX_VALID_LAPS = INITIAL_VALID_LAPS;
-    private static final int[] GLOBAL_YAW_OFFSETS = {0, 683, 1365};
+    private static final int WIDE_EXPLORATION_SAMPLES = 6;
+    // Start with small, route-safe probes. A mechanically valid camera extreme can
+    // make every obstacle disappear, which is useless for the low-mouse-travel goal.
+    private static final int PITCH_PROBE_DELTA = 128;
+    private static final int ZOOM_PROBE_DELTA = 64;
     private final CompoundViewPredictor compoundPredictor = new CompoundViewPredictor();
 
     CameraTarget nextTarget(SearchHistory history, CameraCandidateStats ignoredBest,
@@ -29,37 +33,19 @@ final class CameraSearchPlanner
             return canonicalize(current);
         }
 
-        if (history.totalSamples() >= 16)
+        int explorationSamples = Math.min(WIDE_EXPLORATION_SAMPLES, targetSamples);
+        if (history.totalSamples() < explorationSamples)
         {
-            CompoundViewPredictor.Prediction prediction = compoundPredictor.bestPrediction(history, bounds);
-            if (prediction != null && needsLap(history, prediction.target)) return prediction.target;
+            for (CameraTarget target : explorationTargets(anchor, bounds))
+            {
+                if (needsLap(history, target)) return target;
+            }
         }
 
-        List<CameraTarget> globalTargets = globalTargets(anchor, bounds);
-        for (CameraTarget target : globalTargets)
+        CompoundViewPredictor.Prediction prediction = compoundPredictor.bestPrediction(history, bounds);
+        if (prediction != null && needsLap(history, prediction.target))
         {
-            if (needsLap(history, target)) return target;
-        }
-
-        CameraCandidateStats globalBest = bestOf(history, globalTargets);
-        CameraTarget center = globalBest == null
-            ? new CameraTarget(anchor.yaw, anchor.pitch, anchor.zoom)
-            : new CameraTarget(globalBest.yaw, globalBest.pitch, globalBest.zoom);
-        for (CameraTarget target : localTargets(center, bounds))
-        {
-            if (needsLap(history, target)) return target;
-        }
-
-        if (history.totalSamples() == targetSamples - 1)
-        {
-            CameraCandidateStats winner = history.best();
-            return winner == null ? null : new CameraTarget(winner.yaw, winner.pitch, winner.zoom);
-        }
-
-        if (history.totalSamples() >= 12)
-        {
-            CompoundViewPredictor.Prediction prediction = compoundPredictor.bestPrediction(history, bounds);
-            if (prediction != null && needsLap(history, prediction.target)) return prediction.target;
+            return prediction.target;
         }
 
         CameraCandidateStats measuredBest = history.best();
@@ -71,6 +57,12 @@ final class CameraSearchPlanner
             {
                 if (needsLap(history, target)) return target;
             }
+        }
+
+        if (history.totalSamples() == targetSamples - 1)
+        {
+            CameraCandidateStats winner = history.best();
+            return winner == null ? null : new CameraTarget(winner.yaw, winner.pitch, winner.zoom);
         }
 
         if (history.totalSamples() < targetSamples)
@@ -97,28 +89,21 @@ final class CameraSearchPlanner
         return candidate == null || (candidate.samples == 0 && !candidate.isRejected());
     }
 
-    private static List<CameraTarget> globalTargets(CameraCandidateStats anchor, CameraBounds bounds)
+    private static List<CameraTarget> explorationTargets(CameraCandidateStats anchor, CameraBounds bounds)
     {
         List<CameraTarget> targets = new ArrayList<>();
-        for (int offset : GLOBAL_YAW_OFFSETS)
-        {
-            addUnique(targets, new CameraTarget(normalizeYaw(anchor.yaw + offset),
-                offset == 0 ? anchor.pitch : bounds.clampPitch(anchor.pitch),
-                offset == 0 ? anchor.zoom : bounds.clampZoom(anchor.zoom)));
-        }
-        return targets;
-    }
-
-    private static List<CameraTarget> localTargets(CameraTarget center, CameraBounds bounds)
-    {
-        List<CameraTarget> targets = new ArrayList<>();
-        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw - 256), center.pitch, center.zoom));
-        addUnique(targets, new CameraTarget(normalizeYaw(center.yaw + 256), center.pitch, center.zoom));
-        addUnique(targets, new CameraTarget(center.yaw, bounds.clampPitch(center.pitch - 128), center.zoom));
-        addUnique(targets, new CameraTarget(center.yaw, bounds.clampPitch(center.pitch + 128), center.zoom));
-        addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom - 128)));
-        addUnique(targets, new CameraTarget(center.yaw, center.pitch, bounds.clampZoom(center.zoom + 128)));
-        targets.removeIf(target -> target.key().equals(center.key()));
+        int lowPitch = ceilToStep(bounds.clampPitch(anchor.pitch - PITCH_PROBE_DELTA), 8);
+        int highPitch = floorToStep(bounds.clampPitch(anchor.pitch + PITCH_PROBE_DELTA), 8);
+        int lowZoom = ceilToStep(bounds.clampZoom(anchor.zoom - ZOOM_PROBE_DELTA), 16);
+        int highZoom = floorToStep(bounds.clampZoom(anchor.zoom + ZOOM_PROBE_DELTA), 16);
+        addUnique(targets, new CameraTarget(anchor.yaw, anchor.pitch, anchor.zoom));
+        // Establish the usable tilt/zoom envelope before spending experiments on yaw.
+        addUnique(targets, new CameraTarget(anchor.yaw, lowPitch, anchor.zoom));
+        addUnique(targets, new CameraTarget(anchor.yaw, highPitch, anchor.zoom));
+        addUnique(targets, new CameraTarget(anchor.yaw, anchor.pitch, lowZoom));
+        addUnique(targets, new CameraTarget(anchor.yaw, anchor.pitch, highZoom));
+        addUnique(targets, new CameraTarget(normalizeYaw(anchor.yaw + 683), anchor.pitch, anchor.zoom));
+        addUnique(targets, new CameraTarget(normalizeYaw(anchor.yaw + 1365), anchor.pitch, anchor.zoom));
         return targets;
     }
 
@@ -166,6 +151,16 @@ final class CameraSearchPlanner
     private static int quantize(int value, int step)
     {
         return Math.round((float) value / step) * step;
+    }
+
+    private static int floorToStep(int value, int step)
+    {
+        return Math.floorDiv(value, step) * step;
+    }
+
+    private static int ceilToStep(int value, int step)
+    {
+        return -Math.floorDiv(-value, step) * step;
     }
 
     static int normalizeYaw(int yaw) { return ((yaw % 2048) + 2048) % 2048; }

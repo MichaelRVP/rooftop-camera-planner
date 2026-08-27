@@ -7,6 +7,7 @@ import java.util.Arrays;
 import org.junit.Test;
 
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 
@@ -33,5 +34,18 @@ public class ClickboxNormalizerTest
         Rectangle selected = ClickboxNormalizer.nearest(new Rectangle(135, 110, 1, 1),
             Arrays.asList(new Rectangle(400, 400, 20, 20), nearest));
         assertEquals(nearest, selected);
+    }
+
+    @Test
+    public void cursorFallbackMarkerPreservesAValidClickWithoutAClientClickbox()
+    {
+        assertEquals(new Rectangle(95, 45, 10, 10),
+            RooftopCameraPlugin.cursorFallbackMarker(100, 50, 800, 600));
+        assertEquals(new Rectangle(0, 0, 10, 10),
+            RooftopCameraPlugin.cursorFallbackMarker(1, 2, 800, 600));
+        assertEquals(new Rectangle(790, 590, 10, 10),
+            RooftopCameraPlugin.cursorFallbackMarker(799, 599, 800, 600));
+        assertNull(RooftopCameraPlugin.cursorFallbackMarker(-1, 50, 800, 600));
+        assertNull(RooftopCameraPlugin.cursorFallbackMarker(100, 50, 0, 600));
     }
 }

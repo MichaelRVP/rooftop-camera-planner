@@ -32,7 +32,7 @@ final class RooftopCameraOverlay extends OverlayPanel
         if (config.showDiagnostics())
         {
             panelComponent.getChildren().add(LineComponent.builder().left("Obstacles found").right(
-                plugin.getTrackedObstacleCount() + " / " + course.obstacles.length).build());
+                plugin.getTrackedObstacleCount() + " / " + course.routeSize()).build());
             panelComponent.getChildren().add(LineComponent.builder().left("Visible now").right(
                 Integer.toString(plugin.getVisibleObstacleCount())).build());
         }
@@ -50,7 +50,7 @@ final class RooftopCameraOverlay extends OverlayPanel
             radar.setCalibrationNote(plugin.getCalibrationNote());
             LapOptimizer optimizer = plugin.getLapOptimizer();
             radar.setRouteState(course.displayName, next, optimizer.getProgress(),
-                course.obstacles.length, optimizer.isCurrentLapStableSoFar());
+                course.routeSize(), optimizer.isCurrentLapStableSoFar());
             radar.setHistoryState(profile, optimizer.getLastTravel(), plugin.getTestedCameraCount());
             panelComponent.getChildren().add(radar);
         }
@@ -83,7 +83,7 @@ final class RooftopCameraOverlay extends OverlayPanel
                 if (!Double.isNaN(optimizer.getLastMarkerTravel()))
                 {
                     panelComponent.getChildren().add(LineComponent.builder().left("Marker overlap").right(
-                        optimizer.getLastOverlappingTransitions() + " / " + course.obstacles.length).build());
+                        optimizer.getLastOverlappingTransitions() + " / " + course.routeSize()).build());
                     panelComponent.getChildren().add(LineComponent.builder().left("Marker gaps").right(
                         String.format("%.0f px", optimizer.getLastMarkerGap())).build());
                 }
@@ -94,7 +94,7 @@ final class RooftopCameraOverlay extends OverlayPanel
             if (config.showDiagnostics())
             {
                 panelComponent.getChildren().add(LineComponent.builder().left("Best overlap").right(
-                    String.format("%.1f / %d", profile.overlappingTransitions, course.obstacles.length)).build());
+                    String.format("%.1f / %d", profile.overlappingTransitions, course.routeSize())).build());
                 panelComponent.getChildren().add(LineComponent.builder().left("Best gaps").right(
                     String.format("%.0f px (%d laps)", profile.markerGap, profile.samples)).build());
                 panelComponent.getChildren().add(LineComponent.builder().left("Shared overlap").right(

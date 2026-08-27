@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
 public class RooftopCameraPlugin extends Plugin
 {
     private static final Logger log = LoggerFactory.getLogger(RooftopCameraPlugin.class);
-    private static final String CALIBRATION_VERSION = "camera-varc-10-v3";
+    private static final String CALIBRATION_VERSION = "camera-varc-10-v5-usable-envelope";
     @Inject private Client client;
     @Inject private OverlayManager overlayManager;
     @Inject private ConfigManager configManager;
@@ -73,8 +73,11 @@ public class RooftopCameraPlugin extends Plugin
     private double currentScore;
     private int lastClickedObstacle = -1;
     private int visibleObstacleCount;
+    private int unusableViewTicks;
     private int ticksSinceScan;
     private String calibrationNote;
+    /** A roof transition changed the camera during this lap; it is valid course evidence. */
+    private boolean forcedCameraShiftThisLap;
     private String lastMarkerRenderState;
     private volatile CameraGuidanceState guidanceSnapshot;
     private int calibrationTargetSamples = CameraSearchPlanner.INITIAL_VALID_LAPS;
@@ -132,7 +135,8 @@ public class RooftopCameraPlugin extends Plugin
             course = detected;
             tracked.clear();
             lastClickedObstacle = -1;
-            lapOptimizer.reset(course == null ? 0 : course.obstacles.length);
+            unusableViewTicks = 0;
+            lapOptimizer.reset(course == null ? 0 : course.routeSize());
             bestTravelProfile = course == null ? null : TravelProfile.parse(
                 configManager.getConfiguration(RooftopCameraConfig.GROUP, travelProfileKey(course)));
             bestMarkerLayout = course == null ? null : ScreenMarkerLayout.parse(
@@ -162,6 +166,10 @@ public class RooftopCameraPlugin extends Plugin
             adjustedScreenMarkers = Collections.emptyList();
             bootstrapLegacyProfile();
             applyBestCandidate();
+            if (bestMarkerLayout != null && !bestMarkerLayout.releaseValidated)
+            {
+                calibrationNote = "SAVED MARKERS PAUSED - VERIFY ONE FULL LAP";
+            }
             scanScene();
         }
         if (course == null)
@@ -191,6 +199,7 @@ public class RooftopCameraPlugin extends Plugin
         List<Rectangle> boxes = orderedVisibleClickboxes();
         visibleObstacleCount = boxes.size();
         currentScore = LayoutScorer.score(boxes, client.getViewportWidth(), client.getViewportHeight());
+        rejectVisuallyUselessSearchView();
         if (cameraSettleTracker.observe(client.getCameraYawTarget(), client.getCameraPitchTarget(),
             currentCameraZoom()))
         {
@@ -221,8 +230,12 @@ public class RooftopCameraPlugin extends Plugin
             client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom(),
             wheelAdjusted || dragAdjusted, lapOptimizer.isActive()))
         {
-            rejectCameraTarget(observedTarget);
-            observedTarget = getSearchTarget();
+            // Rooftop transitions can move the camera without player input. Preserve
+            // the experiment and score the real course path instead of making the
+            // player fight the game back to a static full-lap view.
+            forcedCameraShiftThisLap = true;
+            lapOptimizer.cameraAdjusted();
+            calibrationNote = "GAME SHIFT: LAP ACCEPTED";
         }
         boolean boundsChanged = course != null && reachabilityTracker.observe(observedTarget,
             client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom(), cameraBounds);
@@ -261,6 +274,10 @@ public class RooftopCameraPlugin extends Plugin
         {
             int obstacleIndex = course.indexOf(event.getId());
             lastClickedObstacle = event.getId();
+            if (obstacleIndex == 0 && !lapOptimizer.isActive())
+            {
+                forcedCameraShiftThisLap = false;
+            }
             if (obstacleIndex == 0 && bestMarkerLayout != null)
             {
                 cameraSettleTracker.begin(client.getCameraYawTarget(), client.getCameraPitchTarget(),
@@ -271,10 +288,13 @@ public class RooftopCameraPlugin extends Plugin
             net.runelite.api.Point point = client.getMouseCanvasPosition();
             if (point != null)
             {
+                CameraTarget target = alignmentTarget();
                 LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(obstacleIndex,
                     point.getX(), point.getY(), client.getCameraYawTarget(),
                     client.getCameraPitchTarget(), currentCameraZoom(),
-                    clickboxFor(event.getId(), point.getX(), point.getY()), alignedTo(alignmentTarget()));
+                    clickboxFor(event.getId(), point.getX(), point.getY()), calibrationCameraAccepted(
+                        target, client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom(),
+                        forcedCameraShiftThisLap));
                 if (lap != null && config.autoLearn())
                 {
                     learnFrom(lap);
@@ -322,9 +342,11 @@ public class RooftopCameraPlugin extends Plugin
         {
             return Collections.emptyList();
         }
-        return adjustedScreenMarkers.isEmpty()
-            ? bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight())
-            : new ArrayList<>(adjustedScreenMarkers);
+        // Released markers are predictive destinations: they must remain fixed
+        // for the whole lap so the player can pre-position the mouse before the
+        // next obstacle becomes clickable. Live projections are calibration
+        // evidence only and must never move the rendered route each game tick.
+        return bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
     }
 
     private void logMarkerRenderState()
@@ -372,10 +394,10 @@ public class RooftopCameraPlugin extends Plugin
         for (Map.Entry<Integer, Rectangle> entry : live.entrySet())
         {
             int index = entry.getKey();
-            // A completed calibration is the planned click layout.  Do not replace
-            // it with the currently visible obstacle or the guide collapses back
-            // onto the obstacle it is meant to predict.
-            if (index >= 0 && index < merged.size() && merged.get(index) == null && entry.getValue() != null)
+            // A live projection is authoritative after rooftop camera shifts.
+            // Saved coordinates are only a fallback for an obstacle that is not
+            // currently projectable by the client.
+            if (index >= 0 && index < merged.size() && entry.getValue() != null)
             {
                 merged.set(index, new Rectangle(entry.getValue()));
             }
@@ -395,7 +417,7 @@ public class RooftopCameraPlugin extends Plugin
         CameraGuidanceState guidance)
     {
         return calibrationComplete && layout != null && layout.verifiedInnerRectangles
-            && guidance != null && !guidance.calibration && guidance.isAligned();
+            && layout.releaseValidated && guidance != null && !guidance.calibration && guidance.isAligned();
     }
 
     static boolean cameraAligned(int yaw, int pitch, int zoom, TravelProfile profile)
@@ -413,11 +435,36 @@ public class RooftopCameraPlugin extends Plugin
             && Math.abs(pitch - target.pitch) <= 4
             && Math.abs(zoom - target.zoom) <= 8;
     }
+    /** A first clean lap establishes the baseline instead of requiring a target that does not exist yet. */
+    static boolean calibrationCameraAccepted(CameraTarget target, int yaw, int pitch, int zoom)
+    {
+        return calibrationCameraAccepted(target, yaw, pitch, zoom, false);
+    }
+
+    static boolean calibrationCameraAccepted(CameraTarget target, int yaw, int pitch, int zoom,
+        boolean forcedCourseShift)
+    {
+        return forcedCourseShift || target == null || cameraAligned(yaw, pitch, zoom, target);
+    }
+
     int getTestedCameraCount() { return searchHistory.testedCount(); }
     int getValidCalibrationLaps() { return Math.min(searchHistory.totalSamples(), calibrationTargetSamples); }
     CameraTarget getSearchTarget()
     {
         if (course == null) return null;
+        // The game can still settle or reposition the camera while a course loads.
+        // Do not freeze a target from that transient frame; the first click locks
+        // the player's actual usable starting view as the baseline experiment.
+        if (shouldFollowLiveCameraForBaseline(searchHistory.totalSamples(), lapOptimizer.isActive()))
+        {
+            activeSearchTarget = currentCameraTarget();
+            return activeSearchTarget;
+        }
+        if (requiresLiveMarkerVerification())
+        {
+            return bestTravelProfile == null ? null
+                : new CameraTarget(bestTravelProfile.yaw, bestTravelProfile.pitch, bestTravelProfile.zoom);
+        }
         if (activeSearchTarget == null)
         {
             activeSearchTarget = searchPlanner.nextTarget(
@@ -425,6 +472,11 @@ public class RooftopCameraPlugin extends Plugin
                 calibrationTargetSamples);
         }
         return activeSearchTarget;
+    }
+
+    static boolean shouldFollowLiveCameraForBaseline(int completedSamples, boolean lapActive)
+    {
+        return completedSamples == 0 && !lapActive;
     }
     int getSearchTargetSamples()
     {
@@ -642,19 +694,35 @@ public class RooftopCameraPlugin extends Plugin
                 candidates.add(safe);
             }
         }
-        return ClickboxNormalizer.nearest(new Rectangle(mouseX, mouseY, 1, 1), candidates);
+        Rectangle nearest = ClickboxNormalizer.nearest(new Rectangle(mouseX, mouseY, 1, 1), candidates);
+        return nearest != null ? nearest : cursorFallbackMarker(
+            mouseX, mouseY, client.getCanvasWidth(), client.getCanvasHeight());
+    }
+
+    static Rectangle cursorFallbackMarker(int mouseX, int mouseY, int canvasWidth, int canvasHeight)
+    {
+        if (canvasWidth <= 0 || canvasHeight <= 0
+            || mouseX < 0 || mouseY < 0 || mouseX >= canvasWidth || mouseY >= canvasHeight)
+        {
+            return null;
+        }
+
+        int width = Math.min(10, canvasWidth);
+        int height = Math.min(10, canvasHeight);
+        int x = Math.max(0, Math.min(mouseX - width / 2, canvasWidth - width));
+        int y = Math.max(0, Math.min(mouseY - height / 2, canvasHeight - height));
+        return new Rectangle(x, y, width, height);
     }
 
     private void learnFrom(LapOptimizer.CompletedLap lap)
     {
         boolean searchComplete = searchPlanner.isComplete(searchHistory, calibrationTargetSamples);
         CameraTarget requested = searchComplete ? alignmentTarget() : getSearchTarget();
-        if (!lap.stableCamera || Double.isNaN(lap.markerTravel) || requested == null
-            || !cameraAligned(lap.yaw, lap.pitch, lap.zoom, requested))
+        if (!lap.stableCamera || Double.isNaN(lap.markerTravel)
+            || !calibrationCameraAccepted(requested, lap.yaw, lap.pitch, lap.zoom, forcedCameraShiftThisLap))
         {
             calibrationNote = !lap.stableCamera ? "LAST LAP SKIPPED: CAMERA SHIFTED"
                 : Double.isNaN(lap.markerTravel) ? "LAST LAP SKIPPED: MARKER DATA"
-                : requested == null ? "LAST LAP SKIPPED: NO TARGET"
                 : "LAST LAP SKIPPED: CAMERA MISALIGNED";
             log.info("Calibration lap skipped for {}: stable={}, markerTravel={}, requested={}, actual={}/{}/{}",
                 course, lap.stableCamera, lap.markerTravel,
@@ -675,12 +743,21 @@ public class RooftopCameraPlugin extends Plugin
         ScreenMarkerLayout layout = new ScreenMarkerLayout(client.getCanvasWidth(), client.getCanvasHeight(), lap.markers);
         if (searchComplete)
         {
+            if (requiresLiveMarkerVerification())
+            {
+                searchHistory.getOrCreate(yaw, pitch, zoom).add(lap, layout);
+                configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course),
+                    searchHistory.serialize());
+                applyBestCandidate();
+                calibrationNote = "LIVE MARKERS VERIFIED";
+            }
             return;
         }
         searchHistory.getOrCreate(yaw, pitch, zoom).add(lap, layout);
         configManager.setConfiguration(RooftopCameraConfig.GROUP, searchHistoryKey(course), searchHistory.serialize());
         applyBestCandidate();
         activeSearchTarget = null;
+        forcedCameraShiftThisLap = false;
     }
 
     private static int quantize(int value, int step)
@@ -699,10 +776,39 @@ public class RooftopCameraPlugin extends Plugin
         automaticCameraShiftDetector.reset();
     }
 
+    /** Reject a calibration view before a lap if it has hidden the route entirely. */
+    private void rejectVisuallyUselessSearchView()
+    {
+        CameraTarget target = getSearchTarget();
+        if (target == null || !shouldRejectVisuallyUselessView(
+            lapOptimizer.isActive(), alignedTo(target), tracked.size(), visibleObstacleCount))
+        {
+            unusableViewTicks = 0;
+            return;
+        }
+        if (++unusableViewTicks >= 3)
+        {
+            rejectCameraTarget(target);
+            calibrationNote = "VIEW REJECTED: COURSE HIDDEN";
+            unusableViewTicks = 0;
+        }
+    }
+
+    static boolean shouldRejectVisuallyUselessView(boolean lapActive, boolean targetAligned,
+        int trackedObstacles, int visibleObstacles)
+    {
+        return !lapActive && targetAligned && trackedObstacles >= 3 && visibleObstacles == 0;
+    }
+
     private CameraTarget currentCameraTarget()
     {
-        return new CameraTarget(CameraSearchPlanner.normalizeYaw(quantize(client.getCameraYawTarget(), 16)),
-            quantize(client.getCameraPitchTarget(), 8), quantize(currentCameraZoom(), 16));
+        return canonicalCameraTarget(client.getCameraYawTarget(), client.getCameraPitchTarget(), currentCameraZoom());
+    }
+
+    static CameraTarget canonicalCameraTarget(int yaw, int pitch, int zoom)
+    {
+        return new CameraTarget(CameraSearchPlanner.normalizeYaw(quantize(yaw, 16)),
+            quantize(pitch, 8), quantize(zoom, 16));
     }
 
     private int currentCameraZoom()
@@ -737,6 +843,11 @@ public class RooftopCameraPlugin extends Plugin
         {
             configManager.setConfiguration(RooftopCameraConfig.GROUP, markerLayoutKey(course), bestMarkerLayout.serialize());
         }
+    }
+
+    private boolean requiresLiveMarkerVerification()
+    {
+        return bestTravelProfile != null && (bestMarkerLayout == null || !bestMarkerLayout.releaseValidated);
     }
 
     private static String travelProfileKey(RooftopCourse course)

@@ -6,6 +6,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 public class SearchHistoryTest
 {
@@ -95,5 +96,14 @@ public class SearchHistoryTest
             new Rectangle(0, 0, 20, 20), new Rectangle(50, 0, 20, 12)));
 
         assertEquals(safe, history.bestOperational());
+    }
+
+    @Test
+    public void historicalLayoutsCannotWinOperationalSelectionUntilRelived()
+    {
+        SearchHistory history = SearchHistory.parse("32,1200,512,2,4,0,100,200,300,"
+            + "djJ8ODAwLDYwMHwxOjI6MjA6MjA,0");
+
+        assertNull(history.bestOperational());
     }
 }

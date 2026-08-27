@@ -23,7 +23,7 @@ public class ScreenMarkerAlignerTest
         List<Rectangle> adjusted = ScreenMarkerAligner.align(saved, live, 200, 200);
 
         assertEquals(new Rectangle(16, 6, 20, 20), adjusted.get(0));
-        assertEquals(new Rectangle(56, 46, 20, 20), adjusted.get(1));
+        assertEquals(new Rectangle(54, 44, 20, 20), adjusted.get(1));
         assertEquals(new Rectangle(96, 86, 20, 20), adjusted.get(2));
     }
 
@@ -39,5 +39,18 @@ public class ScreenMarkerAlignerTest
 
         assertEquals(new Rectangle(90, 90, 10, 10), adjusted.get(0));
         assertEquals(new Rectangle(10, 10, 10, 10), adjusted.get(1));
+    }
+
+    @Test
+    public void liveProjectionCanRestoreAMissingSavedRouteStep()
+    {
+        List<Rectangle> saved = Arrays.asList(new Rectangle(10, 10, 20, 20), null);
+        Map<Integer, Rectangle> live = new HashMap<>();
+        live.put(1, new Rectangle(70, 80, 15, 18));
+
+        List<Rectangle> adjusted = ScreenMarkerAligner.align(saved, live, 200, 200);
+
+        assertEquals(new Rectangle(10, 10, 20, 20), adjusted.get(0));
+        assertEquals(new Rectangle(70, 80, 15, 18), adjusted.get(1));
     }
 }

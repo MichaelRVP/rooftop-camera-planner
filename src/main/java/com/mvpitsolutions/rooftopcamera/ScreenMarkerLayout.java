@@ -11,18 +11,21 @@ final class ScreenMarkerLayout
     final int canvasHeight;
     final List<Rectangle> markers;
     final boolean verifiedInnerRectangles;
+    /** Captured by the current release's live-lap verifier. */
+    final boolean releaseValidated;
 
     ScreenMarkerLayout(int canvasWidth, int canvasHeight, List<Rectangle> markers)
     {
-        this(canvasWidth, canvasHeight, markers, true);
+        this(canvasWidth, canvasHeight, markers, true, true);
     }
 
     private ScreenMarkerLayout(int canvasWidth, int canvasHeight, List<Rectangle> markers,
-        boolean verifiedInnerRectangles)
+        boolean verifiedInnerRectangles, boolean releaseValidated)
     {
         this.canvasWidth = canvasWidth;
         this.canvasHeight = canvasHeight;
         this.verifiedInnerRectangles = verifiedInnerRectangles;
+        this.releaseValidated = releaseValidated;
         List<Rectangle> copy = new ArrayList<>(markers.size());
         for (Rectangle marker : markers)
         {
@@ -52,7 +55,7 @@ final class ScreenMarkerLayout
 
     String serialize()
     {
-        StringBuilder result = new StringBuilder("v2|" + canvasWidth + "," + canvasHeight + "|");
+        StringBuilder result = new StringBuilder("v3|" + canvasWidth + "," + canvasHeight + "|");
         for (int i = 0; i < markers.size(); i++)
         {
             if (i > 0) result.append(';');
@@ -72,7 +75,9 @@ final class ScreenMarkerLayout
         try
         {
             String[] sections = value.split("\\|", -1);
-            boolean verified = sections.length == 3 && "v2".equals(sections[0]);
+            boolean v3 = sections.length == 3 && "v3".equals(sections[0]);
+            boolean v2 = sections.length == 3 && "v2".equals(sections[0]);
+            boolean verified = v2 || v3;
             if (!verified && sections.length != 2) return null;
             String[] size = sections[verified ? 1 : 0].split(",");
             if (size.length != 2) return null;
@@ -93,7 +98,10 @@ final class ScreenMarkerLayout
                         Integer.parseInt(fields[2]), Integer.parseInt(fields[3])));
                 }
             }
-            return new ScreenMarkerLayout(Integer.parseInt(size[0]), Integer.parseInt(size[1]), markers, verified);
+            // v2 layouts remain available as historical search evidence, but they
+            // cannot be rendered until a current live lap verifies their geometry.
+            return new ScreenMarkerLayout(Integer.parseInt(size[0]), Integer.parseInt(size[1]), markers,
+                verified, v3);
         }
         catch (NumberFormatException ignored)
         {

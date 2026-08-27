@@ -87,6 +87,7 @@ final class CameraCandidateStats
     boolean isOperational()
     {
         if (representativeLayout == null || !representativeLayout.verifiedInnerRectangles
+            || !representativeLayout.releaseValidated
             || representativeLayout.markers.isEmpty()) return false;
         for (java.awt.Rectangle marker : representativeLayout.markers)
         {

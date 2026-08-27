@@ -10,6 +10,43 @@ import static org.junit.Assert.assertTrue;
 
 public class CameraAlignmentTest
 {
+    @Test
+    public void forcedCameraRecoveryUsesTheActualReachableCameraAsTheNextTarget()
+    {
+        CameraTarget recovered = RooftopCameraPlugin.canonicalCameraTarget(2055, 1173, 509);
+
+        assertEquals(0, recovered.yaw);
+        assertEquals(1176, recovered.pitch);
+        assertEquals(512, recovered.zoom);
+        assertTrue(RooftopCameraPlugin.cameraAligned(2055, 1173, 509, recovered));
+    }
+
+    @Test
+    public void forcedCourseShiftAllowsTheCurrentLapToRemainValid()
+    {
+        CameraTarget start = new CameraTarget(512, 1200, 512);
+
+        assertFalse(RooftopCameraPlugin.calibrationCameraAccepted(start, 650, 1376, 512));
+        assertTrue(RooftopCameraPlugin.calibrationCameraAccepted(start, 650, 1376, 512, true));
+    }
+
+    @Test
+    public void hiddenCourseViewIsRejectedOnlyBeforeTheLapBegins()
+    {
+        assertTrue(RooftopCameraPlugin.shouldRejectVisuallyUselessView(false, true, 6, 0));
+        assertFalse(RooftopCameraPlugin.shouldRejectVisuallyUselessView(true, true, 6, 0));
+        assertFalse(RooftopCameraPlugin.shouldRejectVisuallyUselessView(false, true, 6, 1));
+        assertFalse(RooftopCameraPlugin.shouldRejectVisuallyUselessView(false, false, 6, 0));
+    }
+
+    @Test
+    public void firstCalibrationTargetFollowsTheLiveCameraUntilTheLapStarts()
+    {
+        assertTrue(RooftopCameraPlugin.shouldFollowLiveCameraForBaseline(0, false));
+        assertFalse(RooftopCameraPlugin.shouldFollowLiveCameraForBaseline(0, true));
+        assertFalse(RooftopCameraPlugin.shouldFollowLiveCameraForBaseline(1, false));
+    }
+
     private static final TravelProfile PROFILE = new TravelProfile(
         2044, 1000, 500, 1, 1, 1, 1, 1, 2);
 
@@ -36,6 +73,16 @@ public class CameraAlignmentTest
     }
 
     @Test
+    public void firstUntargetedCalibrationLapIsAccepted()
+    {
+        assertTrue(RooftopCameraPlugin.calibrationCameraAccepted(null, 1000, 500, 400));
+        assertTrue(RooftopCameraPlugin.calibrationCameraAccepted(
+            new CameraTarget(1000, 500, 400), 1004, 504, 408));
+        assertFalse(RooftopCameraPlugin.calibrationCameraAccepted(
+            new CameraTarget(1000, 500, 400), 1030, 500, 400));
+    }
+
+    @Test
     public void markersAppearOnlyAfterCampaignAndAtWinningCamera()
     {
         ScreenMarkerLayout layout = new ScreenMarkerLayout(800, 600,
@@ -43,6 +90,14 @@ public class CameraAlignmentTest
         assertFalse(RooftopCameraPlugin.markersAvailable(false, layout, PROFILE, 2044, 1000, 500));
         assertFalse(RooftopCameraPlugin.markersAvailable(true, layout, PROFILE, 20, 1000, 500));
         assertTrue(RooftopCameraPlugin.markersAvailable(true, layout, PROFILE, 2044, 1000, 500));
+    }
+
+    @Test
+    public void historicalV2MarkerGeometryNeverRendersAsActiveGuidance()
+    {
+        ScreenMarkerLayout legacy = ScreenMarkerLayout.parse("v2|800,600|1:2:30:40");
+
+        assertFalse(RooftopCameraPlugin.markersAvailable(true, legacy, PROFILE, 2044, 1000, 500));
     }
 
     @Test

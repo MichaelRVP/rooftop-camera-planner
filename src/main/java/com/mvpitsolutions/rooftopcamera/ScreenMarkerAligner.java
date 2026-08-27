@@ -31,9 +31,23 @@ final class ScreenMarkerAligner
 
         int dx = deltaX.size() >= MIN_MATCHES ? clamp(median(deltaX), -MAX_CORRECTION, MAX_CORRECTION) : 0;
         int dy = deltaY.size() >= MIN_MATCHES ? clamp(median(deltaY), -MAX_CORRECTION, MAX_CORRECTION) : 0;
-        List<Rectangle> adjusted = new ArrayList<>(saved.size());
-        for (Rectangle marker : saved)
+        int markerCount = saved.size();
+        for (Integer index : live.keySet())
         {
+            if (index != null && index >= 0) markerCount = Math.max(markerCount, index + 1);
+        }
+
+        List<Rectangle> adjusted = new ArrayList<>(markerCount);
+        for (int index = 0; index < markerCount; index++)
+        {
+            Rectangle liveMarker = live.get(index);
+            if (liveMarker != null)
+            {
+                adjusted.add(clampToCanvas(liveMarker, canvasWidth, canvasHeight));
+                continue;
+            }
+
+            Rectangle marker = index < saved.size() ? saved.get(index) : null;
             if (marker == null)
             {
                 adjusted.add(null);
@@ -44,6 +58,15 @@ final class ScreenMarkerAligner
             adjusted.add(new Rectangle(x, y, marker.width, marker.height));
         }
         return adjusted;
+    }
+
+    private static Rectangle clampToCanvas(Rectangle marker, int canvasWidth, int canvasHeight)
+    {
+        int width = Math.max(1, Math.min(marker.width, Math.max(1, canvasWidth)));
+        int height = Math.max(1, Math.min(marker.height, Math.max(1, canvasHeight)));
+        int x = clamp(marker.x, 0, Math.max(0, canvasWidth - width));
+        int y = clamp(marker.y, 0, Math.max(0, canvasHeight - height));
+        return new Rectangle(x, y, width, height);
     }
 
     private static int median(List<Integer> values)

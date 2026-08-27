@@ -104,12 +104,17 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
         if (!stableLap) cameraStatus = "CAMERA CHANGED - NEXT LAP COUNTS";
         if (calibrationNote != null) cameraStatus = calibrationNote;
         if (calibrationNote != null) g.setColor(GOLD);
-        g.drawString(cameraStatus, x + 14, y + 44);
         g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
         g.setColor(MUTED);
         String lapLabel = "LAP  " + routeProgress + " / " + routeTotal;
         int lapWidth = g.getFontMetrics().stringWidth(lapLabel);
         g.drawString(lapLabel, x + width - lapWidth - 14, y + 44);
+
+        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+        if (calibrationNote != null) g.setColor(GOLD);
+        else g.setColor(state.isAligned() ? AQUA : Color.WHITE);
+        int statusWidth = Math.max(0, width - lapWidth - 42);
+        g.drawString(ellipsize(g, cameraStatus, statusWidth), x + 14, y + 44);
 
         drawRadar(g, x + 76, y + 104, 43);
         drawZoom(g, x + 143, y + 67, 16, 76);
@@ -119,6 +124,18 @@ final class CameraRadarComponent implements LayoutableRenderableEntity
         drawHistory(g, x + 14, y + 218, width - 28);
         g.dispose();
         return new Dimension(width, height);
+    }
+
+    private static String ellipsize(Graphics2D graphics, String text, int maxWidth)
+    {
+        if (graphics.getFontMetrics().stringWidth(text) <= maxWidth) return text;
+        String suffix = "...";
+        int end = text.length();
+        while (end > 0 && graphics.getFontMetrics().stringWidth(text.substring(0, end) + suffix) > maxWidth)
+        {
+            end--;
+        }
+        return end == 0 ? suffix : text.substring(0, end).trim() + suffix;
     }
 
     private void drawRadar(Graphics2D g, int centerX, int centerY, int radius)

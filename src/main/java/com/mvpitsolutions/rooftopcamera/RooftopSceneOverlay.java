@@ -32,11 +32,11 @@ final class RooftopSceneOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        int next = plugin.getNextObstacleId();
+        int nextStep = plugin.getNextObstacleNumber() - 1;
         for (Map.Entry<TileObject, Integer> entry : plugin.getTracked().entrySet())
         {
             TileObject object = entry.getKey();
-            boolean isNext = object.getId() == next;
+            boolean isNext = entry.getValue() == nextStep;
             if (!isNext && !config.showAllObstacles())
             {
                 continue;
