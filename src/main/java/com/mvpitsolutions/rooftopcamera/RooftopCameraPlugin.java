@@ -158,6 +158,9 @@ public class RooftopCameraPlugin extends Plugin
                 configManager.setConfiguration(RooftopCameraConfig.GROUP,
                     calibrationVersionKey(course), CALIBRATION_VERSION);
             }
+            calibrationTargetSamples = Math.max(calibrationTargetSamples,
+                searchHistory.totalSamples() + searchPlanner.missingDistinctViews(
+                    searchHistory, CameraSearchPlanner.INITIAL_VALID_LAPS));
             cameraBounds = CameraBounds.parse(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, cameraBoundsKey()));
             reachabilityTracker.reset();

@@ -163,9 +163,30 @@ public class CameraSearchPlannerTest
     public void completedCampaignStopsBeforeMorePredictionWork()
     {
         SearchHistory history = new SearchHistory();
-        addLayout(history, 0, 1000, 500, CameraSearchPlanner.MAX_VALID_LAPS, layout(100, 100));
+        addLayout(history, 0, 1000, 500, 1, layout(100, 100));
+        addLayout(history, 128, 1000, 500, 1, layout(100, 100));
+        addLayout(history, 256, 1000, 500, 1, layout(100, 100));
+        addLayout(history, 384, 1000, 500, 1, layout(100, 100));
+        addLayout(history, 512, 1000, 500, 1, layout(100, 100));
+        addLayout(history, 640, 1000, 500, 1, layout(100, 100));
 
         assertNull(planner.nextTarget(history, history.best(), new CameraTarget(0, 1000, 500), bounds));
+    }
+
+    @Test
+    public void sixLapsAcrossOnlyThreeViewsCannotCompleteCalibration()
+    {
+        SearchHistory history = new SearchHistory();
+        addLayout(history, 0, 1000, 500, 2, layout(100, 100));
+        addLayout(history, 128, 1000, 500, 2, layout(200, 100));
+        addLayout(history, 256, 1000, 500, 2, layout(300, 100));
+
+        assertEquals(6, history.totalSamples());
+        assertEquals(3, history.testedCount());
+        assertFalse(planner.isComplete(history));
+        assertEquals(3, planner.missingDistinctViews(history, CameraSearchPlanner.INITIAL_VALID_LAPS));
+        assertTrue(planner.nextTarget(history, history.best(),
+            new CameraTarget(0, 1000, 500), bounds) != null);
     }
 
     private static SearchHistory seededExploration()
