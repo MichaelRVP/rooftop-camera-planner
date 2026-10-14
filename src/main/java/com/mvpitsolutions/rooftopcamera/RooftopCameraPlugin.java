@@ -81,7 +81,7 @@ public class RooftopCameraPlugin extends Plugin
     private String lastMarkerRenderState;
     private volatile CameraGuidanceState guidanceSnapshot;
     private int calibrationTargetSamples = CameraSearchPlanner.INITIAL_VALID_LAPS;
-    private List<Rectangle> adjustedScreenMarkers = Collections.emptyList();
+    private SceneProjectionFrame calibrationProjection;
     private final AtomicBoolean wheelInputPending = new AtomicBoolean();
     private final AtomicBoolean cameraDragPending = new AtomicBoolean();
     private final AWTEventListener cameraInputObserver = event ->
@@ -158,12 +158,15 @@ public class RooftopCameraPlugin extends Plugin
                 configManager.setConfiguration(RooftopCameraConfig.GROUP,
                     calibrationVersionKey(course), CALIBRATION_VERSION);
             }
+            calibrationTargetSamples = Math.max(calibrationTargetSamples,
+                searchHistory.totalSamples() + searchPlanner.missingDistinctViews(
+                    searchHistory, CameraSearchPlanner.INITIAL_VALID_LAPS));
             cameraBounds = CameraBounds.parse(configManager.getConfiguration(
                 RooftopCameraConfig.GROUP, cameraBoundsKey()));
             reachabilityTracker.reset();
             automaticCameraShiftDetector.reset();
             cameraSettleTracker.reset();
-            adjustedScreenMarkers = Collections.emptyList();
+            calibrationProjection = null;
             bootstrapLegacyProfile();
             applyBestCandidate();
             if (bestMarkerLayout != null && !bestMarkerLayout.releaseValidated)
@@ -200,13 +203,9 @@ public class RooftopCameraPlugin extends Plugin
         visibleObstacleCount = boxes.size();
         currentScore = LayoutScorer.score(boxes, client.getViewportWidth(), client.getViewportHeight());
         rejectVisuallyUselessSearchView();
-        if (cameraSettleTracker.observe(client.getCameraYawTarget(), client.getCameraPitchTarget(),
+        if (cameraSettleTracker.observe(client.getCameraYaw(), client.getCameraPitch(),
             currentCameraZoom()))
         {
-            List<Rectangle> saved = bestMarkerLayout == null ? Collections.emptyList()
-                : bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
-            adjustedScreenMarkers = ScreenMarkerAligner.align(saved, liveSafeMarkers(),
-                client.getCanvasWidth(), client.getCanvasHeight());
             calibrationNote = null;
         }
     }
@@ -219,6 +218,7 @@ public class RooftopCameraPlugin extends Plugin
         boolean dragAdjusted = cameraDragPending.getAndSet(false);
         if (wheelAdjusted || dragAdjusted)
         {
+            cameraSettleTracker.begin(client.getCameraYaw(), client.getCameraPitch(), currentCameraZoom());
             lapOptimizer.cameraAdjusted();
         }
         if (dragAdjusted)
@@ -256,6 +256,13 @@ public class RooftopCameraPlugin extends Plugin
         {
             return;
         }
+        if (calibrationProjection != null
+            && !calibrationProjection.sameGeometry(SceneProjectionFrame.capture(client)))
+        {
+            lapOptimizer.cameraTargetRejected();
+            calibrationNote = "LAP SKIPPED: VIEWPORT CHANGED";
+            return;
+        }
         net.runelite.api.Point point = client.getMouseCanvasPosition();
         if (point == null || point.getX() < 0 || point.getY() < 0
             || point.getX() >= client.getCanvasWidth() || point.getY() >= client.getCanvasHeight())
@@ -280,14 +287,15 @@ public class RooftopCameraPlugin extends Plugin
             }
             if (obstacleIndex == 0 && bestMarkerLayout != null)
             {
-                cameraSettleTracker.begin(client.getCameraYawTarget(), client.getCameraPitchTarget(),
+                cameraSettleTracker.begin(client.getCameraYaw(), client.getCameraPitch(),
                     currentCameraZoom());
-                adjustedScreenMarkers = Collections.emptyList();
+                calibrationProjection = null;
                 calibrationNote = "CAMERA SETTLING - MARKERS PAUSED";
             }
             net.runelite.api.Point point = client.getMouseCanvasPosition();
             if (point != null)
             {
+                if (obstacleIndex == 0) calibrationProjection = SceneProjectionFrame.capture(client);
                 CameraTarget target = alignmentTarget();
                 LapOptimizer.CompletedLap lap = lapOptimizer.obstacleClicked(obstacleIndex,
                     point.getX(), point.getY(), client.getCameraYawTarget(),
@@ -342,11 +350,21 @@ public class RooftopCameraPlugin extends Plugin
         {
             return Collections.emptyList();
         }
-        // Released markers are predictive destinations: they must remain fixed
-        // for the whole lap so the player can pre-position the mouse before the
-        // next obstacle becomes clickable. Live projections are calibration
-        // evidence only and must never move the rendered route each game tick.
-        return bestMarkerLayout.scaledTo(client.getCanvasWidth(), client.getCanvasHeight());
+        if (!cameraAligned(client.getCameraYaw(), client.getCameraPitch(),
+            currentCameraZoom(), bestTravelProfile))
+        {
+            return Collections.emptyList();
+        }
+        SceneProjectionFrame frame = SceneProjectionFrame.capture(client);
+        if (!frame.valid()) return Collections.emptyList();
+        List<Rectangle> predictive = bestMarkerLayout.projectedTo(frame);
+        int next = getNextObstacleNumber() - 1;
+        Rectangle liveNext = liveSafeMarkers().get(next);
+        // Calibrated future destinations stay predictive. The actionable marker
+        // must use the current object's safe geometry, not an unused correction
+        // or a median shift inferred from obstacles on different roof stages.
+        return mergeLiveMarkers(predictive, liveNext == null ? Collections.emptyMap()
+            : Collections.singletonMap(next, liveNext));
     }
 
     private void logMarkerRenderState()
@@ -668,7 +686,9 @@ public class RooftopCameraPlugin extends Plugin
             {
                 continue;
             }
-            Rectangle safe = ClickboxNormalizer.largestSafeRectangle(clickbox,
+            java.awt.geom.Area visible = new java.awt.geom.Area(clickbox);
+            visible.intersect(new java.awt.geom.Area(SceneProjectionFrame.capture(client).viewport()));
+            Rectangle safe = ClickboxNormalizer.largestSafeRectangle(visible,
                 client.getCanvasWidth(), client.getCanvasHeight());
             if (safe != null)
             {
@@ -687,7 +707,9 @@ public class RooftopCameraPlugin extends Plugin
             if (object.getId() != objectId) continue;
             Shape shape = object.getClickbox();
             if (shape == null || shape.getBounds().isEmpty()) continue;
-            Rectangle safe = ClickboxNormalizer.largestSafeRectangle(shape,
+            java.awt.geom.Area visible = new java.awt.geom.Area(shape);
+            visible.intersect(new java.awt.geom.Area(SceneProjectionFrame.capture(client).viewport()));
+            Rectangle safe = ClickboxNormalizer.largestSafeRectangle(visible,
                 client.getCanvasWidth(), client.getCanvasHeight());
             if (safe != null)
             {
@@ -695,8 +717,7 @@ public class RooftopCameraPlugin extends Plugin
             }
         }
         Rectangle nearest = ClickboxNormalizer.nearest(new Rectangle(mouseX, mouseY, 1, 1), candidates);
-        return nearest != null ? nearest : cursorFallbackMarker(
-            mouseX, mouseY, client.getCanvasWidth(), client.getCanvasHeight());
+        return nearest; // Missing click geometry cannot certify a future hover destination.
     }
 
     static Rectangle cursorFallbackMarker(int mouseX, int mouseY, int canvasWidth, int canvasHeight)
@@ -740,7 +761,13 @@ public class RooftopCameraPlugin extends Plugin
         int yaw = CameraSearchPlanner.normalizeYaw(quantize(lap.yaw, 16));
         int pitch = quantize(lap.pitch, 8);
         int zoom = quantize(lap.zoom, 16);
-        ScreenMarkerLayout layout = new ScreenMarkerLayout(client.getCanvasWidth(), client.getCanvasHeight(), lap.markers);
+        if (calibrationProjection == null || !calibrationProjection.valid()
+            || !calibrationProjection.sameGeometry(SceneProjectionFrame.capture(client)))
+        {
+            calibrationNote = "LAP SKIPPED: VIEWPORT CHANGED";
+            return;
+        }
+        ScreenMarkerLayout layout = new ScreenMarkerLayout(calibrationProjection, lap.markers);
         if (searchComplete)
         {
             if (requiresLiveMarkerVerification())
@@ -847,7 +874,8 @@ public class RooftopCameraPlugin extends Plugin
 
     private boolean requiresLiveMarkerVerification()
     {
-        return bestTravelProfile != null && (bestMarkerLayout == null || !bestMarkerLayout.releaseValidated);
+        return bestTravelProfile != null && (bestMarkerLayout == null || !bestMarkerLayout.releaseValidated
+            || bestMarkerLayout.projectionFrame == null);
     }
 
     private static String travelProfileKey(RooftopCourse course)
@@ -891,7 +919,7 @@ public class RooftopCameraPlugin extends Plugin
         activeSearchTarget = null;
         cameraBounds = new CameraBounds();
         cameraSettleTracker.reset();
-        adjustedScreenMarkers = Collections.emptyList();
+        calibrationProjection = null;
         currentScore = 0;
         lastClickedObstacle = -1;
         visibleObstacleCount = 0;

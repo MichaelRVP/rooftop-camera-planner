@@ -23,7 +23,7 @@ final class CameraSearchPlanner
     CameraTarget nextTarget(SearchHistory history, CameraCandidateStats ignoredBest,
         CameraTarget current, CameraBounds bounds, int targetSamples)
     {
-        if (history.totalSamples() >= targetSamples)
+        if (isComplete(history, targetSamples))
         {
             return null;
         }
@@ -34,18 +34,18 @@ final class CameraSearchPlanner
         }
 
         int explorationSamples = Math.min(WIDE_EXPLORATION_SAMPLES, targetSamples);
-        if (history.totalSamples() < explorationSamples)
+        CompoundViewPredictor.Prediction prediction = compoundPredictor.bestPrediction(history, bounds);
+        if (prediction != null && needsLap(history, prediction.target))
+        {
+            return prediction.target;
+        }
+
+        if (history.testedCount() < explorationSamples)
         {
             for (CameraTarget target : explorationTargets(anchor, bounds))
             {
                 if (needsLap(history, target)) return target;
             }
-        }
-
-        CompoundViewPredictor.Prediction prediction = compoundPredictor.bestPrediction(history, bounds);
-        if (prediction != null && needsLap(history, prediction.target))
-        {
-            return prediction.target;
         }
 
         CameraCandidateStats measuredBest = history.best();
@@ -80,7 +80,18 @@ final class CameraSearchPlanner
 
     boolean isComplete(SearchHistory history, int targetSamples)
     {
-        return history.totalSamples() >= targetSamples;
+        return history.totalSamples() >= targetSamples
+            && history.testedCount() >= requiredDistinctViews(targetSamples);
+    }
+
+    int missingDistinctViews(SearchHistory history, int targetSamples)
+    {
+        return Math.max(0, requiredDistinctViews(targetSamples) - history.testedCount());
+    }
+
+    private static int requiredDistinctViews(int targetSamples)
+    {
+        return Math.min(WIDE_EXPLORATION_SAMPLES, Math.max(1, targetSamples));
     }
 
     private static boolean needsLap(SearchHistory history, CameraTarget target)

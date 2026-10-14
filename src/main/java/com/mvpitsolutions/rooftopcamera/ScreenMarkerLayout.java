@@ -13,19 +13,36 @@ final class ScreenMarkerLayout
     final boolean verifiedInnerRectangles;
     /** Captured by the current release's live-lap verifier. */
     final boolean releaseValidated;
+    final SceneProjectionFrame projectionFrame;
 
     ScreenMarkerLayout(int canvasWidth, int canvasHeight, List<Rectangle> markers)
     {
-        this(canvasWidth, canvasHeight, markers, true, true);
+        this(canvasWidth, canvasHeight, markers, true, true, null);
+    }
+
+    ScreenMarkerLayout(SceneProjectionFrame frame, List<Rectangle> markers)
+    {
+        this(frame.canvasWidth, frame.canvasHeight, markers, true, frame.valid(), frame);
+    }
+
+    List<Rectangle> projectedTo(SceneProjectionFrame frame)
+    {
+        List<Rectangle> result = new ArrayList<>(markers.size());
+        for (Rectangle marker : markers)
+        {
+            result.add(projectionFrame == null ? null : projectionFrame.project(marker, frame));
+        }
+        return result;
     }
 
     private ScreenMarkerLayout(int canvasWidth, int canvasHeight, List<Rectangle> markers,
-        boolean verifiedInnerRectangles, boolean releaseValidated)
+        boolean verifiedInnerRectangles, boolean releaseValidated, SceneProjectionFrame projectionFrame)
     {
         this.canvasWidth = canvasWidth;
         this.canvasHeight = canvasHeight;
         this.verifiedInnerRectangles = verifiedInnerRectangles;
         this.releaseValidated = releaseValidated;
+        this.projectionFrame = projectionFrame;
         List<Rectangle> copy = new ArrayList<>(markers.size());
         for (Rectangle marker : markers)
         {
@@ -55,7 +72,14 @@ final class ScreenMarkerLayout
 
     String serialize()
     {
-        StringBuilder result = new StringBuilder("v3|" + canvasWidth + "," + canvasHeight + "|");
+        StringBuilder result = new StringBuilder((projectionFrame == null ? "v3|" : "v4|")
+            + canvasWidth + "," + canvasHeight + "|");
+        if (projectionFrame != null)
+        {
+            result.append(projectionFrame.x).append(':').append(projectionFrame.y).append(':')
+                .append(projectionFrame.width).append(':').append(projectionFrame.height).append(':')
+                .append(projectionFrame.scale).append('|');
+        }
         for (int i = 0; i < markers.size(); i++)
         {
             if (i > 0) result.append(';');
@@ -75,14 +99,25 @@ final class ScreenMarkerLayout
         try
         {
             String[] sections = value.split("\\|", -1);
+            boolean v4 = sections.length == 4 && "v4".equals(sections[0]);
             boolean v3 = sections.length == 3 && "v3".equals(sections[0]);
             boolean v2 = sections.length == 3 && "v2".equals(sections[0]);
-            boolean verified = v2 || v3;
+            boolean verified = v2 || v3 || v4;
             if (!verified && sections.length != 2) return null;
             String[] size = sections[verified ? 1 : 0].split(",");
             if (size.length != 2) return null;
+            SceneProjectionFrame projection = null;
+            if (v4)
+            {
+                String[] p = sections[2].split(":");
+                if (p.length != 5) return null;
+                projection = new SceneProjectionFrame(Integer.parseInt(size[0]), Integer.parseInt(size[1]),
+                    Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]),
+                    Integer.parseInt(p[3]), Integer.parseInt(p[4]));
+                if (!projection.valid()) return null;
+            }
             List<Rectangle> markers = new ArrayList<>();
-            String encodedMarkers = sections[verified ? 2 : 1];
+            String encodedMarkers = sections[v4 ? 3 : verified ? 2 : 1];
             if (!encodedMarkers.isEmpty())
             {
                 for (String encoded : encodedMarkers.split(";", -1))
@@ -101,7 +136,7 @@ final class ScreenMarkerLayout
             // v2 layouts remain available as historical search evidence, but they
             // cannot be rendered until a current live lap verifies their geometry.
             return new ScreenMarkerLayout(Integer.parseInt(size[0]), Integer.parseInt(size[1]), markers,
-                verified, v3);
+                verified, v3 || v4, projection);
         }
         catch (NumberFormatException ignored)
         {

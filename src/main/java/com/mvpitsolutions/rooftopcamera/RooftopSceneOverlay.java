@@ -60,8 +60,12 @@ final class RooftopSceneOverlay extends Overlay
 
     private static void drawScreenMarkers(Graphics2D graphics, List<Rectangle> markers, int next)
     {
+        // Future destinations first; an overlapping prediction must not cover
+        // the currently actionable marker and its hover label.
+        for (int pass = 0; pass < 2; pass++)
         for (int i = 0; i < markers.size(); i++)
         {
+            if ((i == next) != (pass == 1)) continue;
             Rectangle marker = markers.get(i);
             if (marker == null) continue;
 
